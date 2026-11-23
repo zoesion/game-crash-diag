@@ -21,6 +21,7 @@ param(
     [switch]$Minimized,
     [switch]$Tray,
     [int]$ShowAfter = 0,
+    [switch]$TestReport,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -285,7 +286,7 @@ $lblTitle = New-Object System.Windows.Forms.Label
 $lblTitle.Text = 'BF6监控器'
 $lblTitle.Font = $FontTitle
 $lblTitle.ForeColor = $C.Text
-$lblTitle.Location = New-Object System.Drawing.Point(20, 8)
+$lblTitle.Location = New-Object System.Drawing.Point(12, 8)
 $lblTitle.AutoSize = $true
 $form.Controls.Add($lblTitle)
 
@@ -294,7 +295,7 @@ $modeTxt = if ($script:HasNvidia) { '' } else { '    （通用模式）' }
 $lblSub.Text = "GPU  ·  $($gpuInfo.Name)    驱动 $($gpuInfo.Driver)$modeTxt"
 $lblSub.Font = $FontMid
 $lblSub.ForeColor = $C.Dim
-$lblSub.Location = New-Object System.Drawing.Point(22, 42)
+$lblSub.Location = New-Object System.Drawing.Point(14, 42)
 $lblSub.AutoSize = $true
 $form.Controls.Add($lblSub)
 
@@ -325,10 +326,10 @@ function New-Card($x, $y, $w, $h, $title) {
     $p
 }
 
-$cardTemp  = New-Card 20  66 171 74 '温度'
-$cardPower = New-Card 203 66 171 74 '功耗'
-$cardClock = New-Card 386 66 171 74 '核心频率'
-$cardUtil  = New-Card 569 66 171 74 'GPU 占用'
+$cardTemp  = New-Card 12  66 175 74 '温度'
+$cardPower = New-Card 199 66 175 74 '功耗'
+$cardClock = New-Card 386 66 175 74 '核心频率'
+$cardUtil  = New-Card 573 66 175 74 'GPU 占用'
 
 function Add-BigValue($panel, $name) {
     $l = New-Object System.Windows.Forms.Label
@@ -368,9 +369,9 @@ $unitUtil.Location = New-Object System.Drawing.Point(150, 12); $unitUtil.AutoSiz
 $cardUtil.Controls.Add($unitUtil)
 
 # ── 曲线图 ──
-$chartW, $chartH = 720, 120
+$chartW, $chartH = 736, 120
 $chart = New-Object System.Windows.Forms.PictureBox
-$chart.Location = New-Object System.Drawing.Point(20, 146)
+$chart.Location = New-Object System.Drawing.Point(12, 146)
 $chart.Size = New-Object System.Drawing.Size($chartW, $chartH)
 $chart.BackColor = $C.Card
 $form.Controls.Add($chart)
@@ -380,7 +381,7 @@ $chart.Image = $null
 
 # ── CPU 走势图 ──
 $cpuChart = New-Object System.Windows.Forms.PictureBox
-$cpuChart.Location = New-Object System.Drawing.Point(20, 368)
+$cpuChart.Location = New-Object System.Drawing.Point(12, 368)
 $cpuChart.Size = New-Object System.Drawing.Size($chartW, 110)
 $cpuChart.BackColor = $C.Card
 $form.Controls.Add($cpuChart)
@@ -397,15 +398,15 @@ $lblCpuModel = New-Object System.Windows.Forms.Label
 $lblCpuModel.Text = "CPU  ·  $cpuNameTxt    $cpuCoreTxt"
 $lblCpuModel.Font = $FontMid
 $lblCpuModel.ForeColor = $C.Dim
-$lblCpuModel.Location = New-Object System.Drawing.Point(22, 268)
+$lblCpuModel.Location = New-Object System.Drawing.Point(14, 268)
 $lblCpuModel.AutoSize = $true
 $form.Controls.Add($lblCpuModel)
 
 # ── CPU 四个卡片 ──
-$cardCpuTemp  = New-Card 20  288 171 74 'CPU 温度'
-$cardCpuClock = New-Card 203 288 171 74 'CPU 频率'
-$cardCpuUtil  = New-Card 386 288 171 74 'CPU 占用'
-$cardCpuCores = New-Card 569 288 171 74 '活跃核心'
+$cardCpuTemp  = New-Card 12  288 175 74 'CPU 温度'
+$cardCpuClock = New-Card 199 288 175 74 'CPU 频率'
+$cardCpuUtil  = New-Card 386 288 175 74 'CPU 占用'
+$cardCpuCores = New-Card 573 288 175 74 '活跃核心'
 
 $valCpuTemp  = Add-BigValue $cardCpuTemp  'v'
 $valCpuClock = Add-BigValue $cardCpuClock 'v'
@@ -431,7 +432,7 @@ $lblDetail = New-Object System.Windows.Forms.Label
 $lblDetail.Text = 'CPU -- / -- / --      显存 -- / -- MB      降频 --'
 $lblDetail.Font = $FontSmall
 $lblDetail.ForeColor = $C.Dim
-$lblDetail.Location = New-Object System.Drawing.Point(20, 486)
+$lblDetail.Location = New-Object System.Drawing.Point(12, 486)
 $lblDetail.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblDetail)
 
@@ -439,7 +440,7 @@ $lblStats = New-Object System.Windows.Forms.Label
 $lblStats.Text = '本次未记录'
 $lblStats.Font = $FontSmall
 $lblStats.ForeColor = $C.Dim
-$lblStats.Location = New-Object System.Drawing.Point(20, 508)
+$lblStats.Location = New-Object System.Drawing.Point(12, 508)
 $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
@@ -464,10 +465,10 @@ function New-Button($x, $text, $w = 135) {
     $b
 }
 
-$btnStart = New-Button 20  '开始记录'
-$btnStop  = New-Button 165 '停止'
-$btnLogs  = New-Button 310 '打开数据目录'
-$btnRep   = New-Button 455 '打开崩溃报告'
+$btnStart = New-Button 12  '开始记录'
+$btnStop  = New-Button 158 '停止'
+$btnLogs  = New-Button 304 '打开数据目录'
+$btnRep   = New-Button 450 '打开崩溃报告'
 
 # ── 右下角：开机自启 ──
 $script:RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -480,7 +481,7 @@ $chkAutoStart.Font = $FontBody
 $chkAutoStart.ForeColor = $C.Dim
 $chkAutoStart.AutoSize = $true
 $chkAutoStart.Cursor = [System.Windows.Forms.Cursors]::Hand
-$chkAutoStart.Location = New-Object System.Drawing.Point(604, 539)
+$chkAutoStart.Location = New-Object System.Drawing.Point(598, 539)
 $form.Controls.Add($chkAutoStart)
 
 $lblMem = New-Object System.Windows.Forms.Label
@@ -488,7 +489,7 @@ $lblMem.Text = '程序内存 -- MB'
 $lblMem.Font = $FontVer
 $lblMem.ForeColor = [System.Drawing.Color]::FromArgb(110, 110, 120)
 $lblMem.AutoSize = $true
-$lblMem.Location = New-Object System.Drawing.Point(606, 561)
+$lblMem.Location = New-Object System.Drawing.Point(600, 561)
 $form.Controls.Add($lblMem)
 
 $chkAutoStart.Add_CheckedChanged({
@@ -530,15 +531,15 @@ $lblHint = New-Object System.Windows.Forms.Label
 $lblHint.Text = '提示：游戏启动自动记录，退出/崩溃自动生成报告；鼠标移到曲线上可查看该点数值。'
 $lblHint.Font = $FontSmall
 $lblHint.ForeColor = $C.Dim
-$lblHint.Location = New-Object System.Drawing.Point(20, 582)
+$lblHint.Location = New-Object System.Drawing.Point(12, 582)
 $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.6   数据目录: $Root"
+$lblVer.Text = "v2.7   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
-$lblVer.Location = New-Object System.Drawing.Point(20, 618)
+$lblVer.Location = New-Object System.Drawing.Point(12, 618)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
 $form.Controls.Add($lblVer)
 
@@ -616,6 +617,106 @@ function Test-IsCrash($exitTime) {
     return @{ IsCrash = $false; Reason = '无崩溃特征' }
 }
 
+function Get-DiagnosisLines($logFile, $verdict, $exitTime) {
+    $out = New-Object System.Collections.Generic.List[string]
+
+    # ── 读遥测尾部 ──
+    $rows = New-Object System.Collections.Generic.List[object]
+    if ($logFile -and (Test-Path $logFile)) {
+        foreach ($ln in (Get-Content $logFile | Select-Object -Skip 1)) {
+            if ([string]::IsNullOrWhiteSpace($ln)) { continue }
+            $p = $ln -split ','
+            if ($p.Count -ge 14) { $rows.Add($p) }
+        }
+    }
+    $tail = @($rows | Select-Object -Last 120)
+
+    $maxT = $null; $maxP = $null; $minC = $null; $maxC = $null
+    $capCount = 0; $valid = 0
+    foreach ($r in $tail) {
+        $t = 0.0; $pw = 0.0; $ck = 0
+        if ([double]::TryParse($r[1], [ref]$t)) { if ($null -eq $maxT -or $t -gt $maxT) { $maxT = $t }; $valid++ }
+        if ([double]::TryParse($r[2], [ref]$pw)) { if ($null -eq $maxP -or $pw -gt $maxP) { $maxP = $pw } }
+        if ([int]::TryParse($r[3], [ref]$ck)) {
+            if ($null -eq $minC -or $ck -lt $minC) { $minC = $ck }
+            if ($null -eq $maxC -or $ck -gt $maxC) { $maxC = $ck }
+        }
+        if ($r[10] -eq '1') { $capCount++ }
+    }
+
+    # ── 驱动事件 ──
+    $drvCount = 0
+    try {
+        $drvCount = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'nvlddmkm'; StartTime = $exitTime.AddMinutes(-10) } -ErrorAction Stop).Count
+    } catch {}
+    $dumpCount = 0
+    try {
+        $dd = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Battlefield 6\CrashDumps'
+        if (Test-Path $dd) {
+            $dumpCount = @(Get-ChildItem $dd -Filter '*.mdmp' -ErrorAction SilentlyContinue |
+                           Where-Object { $_.LastWriteTime -ge $exitTime.AddMinutes(-3) }).Count
+        }
+    } catch {}
+
+    $maxPLimit = 175
+    try {
+        $ml = & nvidia-smi --query-gpu=power.max_limit --format=csv,noheader,nounits 2>$null
+        if ($ml -match '([\d.]+)') { $maxPLimit = [math]::Round([double]$matches[1]) }
+    } catch {}
+
+    # ── 判定结论 ──
+    [void]$out.Add('判定结论 : ' + $(if ($verdict.IsCrash) { "检测到崩溃（依据：$($verdict.Reason)）" } else { '未检测到崩溃特征' }))
+    [void]$out.Add('')
+
+    # ── 证据 ──
+    [void]$out.Add('证据：')
+    if ($valid -gt 0) {
+        if ($null -ne $maxT) {
+            $thermalNote = if ($maxT -ge 85) { '偏高，可能触发温度墙' } elseif ($maxT -ge 75) { '略高' } else { '正常，可排除过热' }
+            [void]$out.Add(("  · 崩溃前最高温度 {0:N1}°C —— {1}" -f $maxT, $thermalNote))
+        }
+        if ($null -ne $maxP) {
+            $pNote = if ($maxP -gt $maxPLimit) { "超过标称上限 $maxPLimit W，存在瞬态功耗尖峰" } else { "未超过标称上限 $maxPLimit W" }
+            [void]$out.Add(("  · 崩溃前最高功耗 {0:N0} W —— {1}" -f $maxP, $pNote))
+        }
+        if ($null -ne $minC -and $null -ne $maxC -and $minC -gt 0) {
+            [void]$out.Add(("  · 核心频率 {0:N0} ~ {1:N0} MHz（波动 {2:N0} MHz）" -f $minC, $maxC, ($maxC - $minC)))
+        }
+        $capPct = if ($valid -gt 0) { [math]::Round($capCount * 100.0 / $valid) } else { 0 }
+        if ($capPct -ge 50) { [void]$out.Add("  · 约 $capPct% 的采样处于「功耗墙」状态") }
+    }
+    else {
+        [void]$out.Add('  · 没有可用的遥测数据')
+    }
+    if ($drvCount -gt 0) { [void]$out.Add("  · 最近 10 分钟 nvlddmkm 驱动事件 $drvCount 条（GPU 执行单元报错）") }
+    if ($dumpCount -gt 0) { [void]$out.Add("  · 游戏生成了 $dumpCount 个崩溃转储（.mdmp）") }
+    [void]$out.Add('')
+
+    # ── 可能原因 ──
+    [void]$out.Add('可能原因（按可能性排序）：')
+    $causes = @()
+    if ($null -ne $maxT -and $maxT -ge 85) { $causes += '散热不足：崩溃前温度已接近或超过温度墙' }
+    if ($null -ne $maxP -and $maxP -gt $maxPLimit) { $causes += '供电瞬态：功耗尖峰超过上限，电压跌落导致 GPU 计算单元出错' }
+    if ($drvCount -gt 0) { $causes += '驱动或硬件：nvlddmkm 报告 GPU 执行单元异常（Graphics Exception）' }
+    if ($minC -ne $null -and $minC -gt 0 -and $minC -lt 1000) { $causes += '硬件降频：核心频率曾跌到 1000MHz 以下，供电或温度撑不住' }
+    if ($causes.Count -eq 0) { $causes += '遥测数值均在正常范围，更可能是驱动缺陷或 GPU 硬件本身的问题' }
+    $i = 1
+    foreach ($x in $causes) { [void]$out.Add("  $i. $x"); $i++ }
+    [void]$out.Add('')
+
+    # ── 建议动作 ──
+    [void]$out.Add('建议动作：')
+    $acts = @()
+    if ($null -ne $maxP -and $maxP -gt $maxPLimit) { $acts += '降低功耗墙：tools\power-cap.ps1 -Watts 145（削平瞬态尖峰，帧数损失约 5%）' }
+    if ($drvCount -gt 0 -or $dumpCount -gt 0) { $acts += '确认没有超频：关闭 MSI Afterburner 的超频，或用 tools\apply-fixes.ps1 一键重置' }
+    $acts += '关闭硬件加速GPU计划（HAGS）：tools\apply-fixes.ps1（需重启）'
+    if ($dumpCount -gt 0) { $acts += '解析转储拿异常码：tools\analyze-dump.ps1 -DumpPath "<转储路径>" -ShowModules' }
+    $acts += '若反复发生：更新或回滚到战地6 支持的驱动版本'
+    $i = 1
+    foreach ($x in $acts) { [void]$out.Add("  $i. $x"); $i++ }
+
+    return $out
+}
 function Write-CrashReport($exitTime, $isCrash = $true, $reason = '') {
     $stamp = $exitTime.ToString('yyyyMMdd-HHmmss')
     $prefix = if ($isCrash) { 'crash' } else { 'session' }
@@ -669,6 +770,15 @@ function Write-CrashReport($exitTime, $isCrash = $true, $reason = '') {
             }
     }
     catch { L '  (无)' }
+    L ''
+
+    # ── 自动诊断 ──
+    L '--- 自动诊断 ---'
+    try {
+        $verdict = @{ IsCrash = $isCrash; Reason = $reason }
+        foreach ($dl in (Get-DiagnosisLines $script:LogFile $verdict $exitTime)) { L $dl }
+    }
+    catch { L "  (诊断生成失败: $($_.Exception.Message))" }
     L ''
 
     L '--- 系统状态 ---'
@@ -1054,6 +1164,15 @@ if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog)) {
         }
         exit
     }
+}
+if ($TestReport) {
+    Start-Logging 'system'
+    for ($i = 0; $i -lt 6; $i++) { Update-UI; Start-Sleep -Milliseconds 400 }
+    $script:LogCount = 6
+    Stop-Logging
+    $rep = Write-CrashReport (Get-Date) $true '测试样本'
+    Write-Output "报告已生成: $rep"
+    exit 0
 }
 if ($ForceLog -and -not $script:Recording) { Start-Logging }
 if ($UiTest) {
