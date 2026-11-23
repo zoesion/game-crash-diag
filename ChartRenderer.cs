@@ -99,9 +99,9 @@ public static class ChartRenderer
             for (int k = 0; k < n; k++)
             {
                 int i = idx[k];
-                float x = (float)(w * (i / spanX));
-                double yA = h - 12 - ((a[i] - loA) / (hiA - loA)) * (h - 32);
-                double yB = h - 12 - ((b[i] - loB) / (hiB - loB)) * (h - 32);
+                float x = 6f + (float)((w - 12) * (i / spanX));
+                double yA = h - 14 - ((a[i] - loA) / (hiA - loA)) * (h - 42);
+                double yB = h - 14 - ((b[i] - loB) / (hiB - loB)) * (h - 42);
                 ptsA[k] = new PointF(x, (float)yA);
                 ptsB[k] = new PointF(x, (float)yB);
             }
@@ -119,14 +119,14 @@ public static class ChartRenderer
             // 悬停十字线
             if (hover >= 0 && hover < count)
             {
-                float hx = (float)(w * (hover / (double)(count - 1)));
+                float hx = 6f + (float)((w - 12) * (hover / (double)(count - 1)));
                 using (Pen penH = new Pen(Color.FromArgb(110, 200, 200, 210), 1f))
                 {
                     penH.DashStyle = DashStyle.Dot;
                     g.DrawLine(penH, hx, 0, hx, h);
                 }
-                double yA = h - 12 - ((a[hover] - loA) / (hiA - loA)) * (h - 32);
-                double yB = h - 12 - ((b[hover] - loB) / (hiB - loB)) * (h - 32);
+                double yA = h - 14 - ((a[hover] - loA) / (hiA - loA)) * (h - 42);
+                double yB = h - 14 - ((b[hover] - loB) / (hiB - loB)) * (h - 42);
                 using (SolidBrush dotA = new SolidBrush(colorA))
                 using (SolidBrush dotB = new SolidBrush(colorB))
                 {
@@ -141,9 +141,16 @@ public static class ChartRenderer
             string sMaxB = string.Format("{0:N0}{1}", maxB, unitB);
             float wMaxA = g.MeasureString(sMaxA, font).Width;
             float wMaxB = g.MeasureString(sMaxB, font).Width;
-            g.DrawString(sMaxA, font, brushDim, w - wMaxA - 8f, 22f);
+            // 右上角刻度标签加底衬，避免与曲线重叠
+            float labX = w - wMaxA - wMaxB - 40f;
+            float labW = wMaxA + wMaxB + 40f;
+            using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(220, card)))
+            {
+                g.FillRectangle(bgBrush, labX - 4f, 22f, labW, 19f);
+            }
+            g.DrawString(sMaxA, font, brushDim, w - wMaxA - 8f, 25f);
             g.DrawString(sMinA, font, brushDim, w - wMaxA - 8f, h - 20f);
-            g.DrawString(sMaxB, font, brushB, w - wMaxA - wMaxB - 34f, 22f);
+            g.DrawString(sMaxB, font, brushB, w - wMaxA - wMaxB - 34f, 25f);
         }
     }
 }

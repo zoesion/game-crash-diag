@@ -325,10 +325,10 @@ function New-Card($x, $y, $w, $h, $title) {
     $p
 }
 
-$cardTemp  = New-Card 20  66 170 74 '温度'
-$cardPower = New-Card 200 66 170 74 '功耗'
-$cardClock = New-Card 380 66 170 74 '核心频率'
-$cardUtil  = New-Card 560 66 172 74 'GPU 占用'
+$cardTemp  = New-Card 20  66 171 74 '温度'
+$cardPower = New-Card 203 66 171 74 '功耗'
+$cardClock = New-Card 386 66 171 74 '核心频率'
+$cardUtil  = New-Card 569 66 171 74 'GPU 占用'
 
 function Add-BigValue($panel, $name) {
     $l = New-Object System.Windows.Forms.Label
@@ -402,10 +402,10 @@ $lblCpuModel.AutoSize = $true
 $form.Controls.Add($lblCpuModel)
 
 # ── CPU 四个卡片 ──
-$cardCpuTemp  = New-Card 20  288 170 74 'CPU 温度'
-$cardCpuClock = New-Card 200 288 170 74 'CPU 频率'
-$cardCpuUtil  = New-Card 380 288 170 74 'CPU 占用'
-$cardCpuCores = New-Card 560 288 172 74 '活跃核心'
+$cardCpuTemp  = New-Card 20  288 171 74 'CPU 温度'
+$cardCpuClock = New-Card 203 288 171 74 'CPU 频率'
+$cardCpuUtil  = New-Card 386 288 171 74 'CPU 占用'
+$cardCpuCores = New-Card 569 288 171 74 '活跃核心'
 
 $valCpuTemp  = Add-BigValue $cardCpuTemp  'v'
 $valCpuClock = Add-BigValue $cardCpuClock 'v'
@@ -535,7 +535,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.5   数据目录: $Root"
+$lblVer.Text = "v2.6   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -710,7 +710,7 @@ function Draw-Chart {
     $cnt = $script:TempHist.Count
     $spanMin = [math]::Round($cnt * ($script:IntervalMs / 1000.0) / 60.0, 1)
     $secPerPt = $script:IntervalMs / 1000.0
-    $infoTxt = ("每 {0:g} 秒 1 点 · 共 {1:N0} 点 · 跨度 {2} 分钟" -f $secPerPt, $cnt, $spanMin)
+    $infoTxt = ("每 {0:g} 秒 1 点 · {1:N0} 点 · {2} 分钟" -f $secPerPt, $cnt, $spanMin)
 
     if ($script:HasNvidia) {
         [ChartRenderer]::Render($script:chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
@@ -727,7 +727,7 @@ function Draw-Chart {
     if ($script:CpuTempHist.Count -ge 1) {
         $cCnt = $script:CpuTempHist.Count
         $cSpan = [math]::Round($cCnt * ($script:IntervalMs / 1000.0) / 60.0, 1)
-        $cInfo = ("每 {0:g} 秒 1 点 · 共 {1:N0} 点 · 跨度 {2} 分钟" -f $secPerPt, $cCnt, $cSpan)
+        $cInfo = ("每 {0:g} 秒 1 点 · {1:N0} 点 · {2} 分钟" -f $secPerPt, $cCnt, $cSpan)
         [ChartRenderer]::Render($script:cpuBmp, $script:CpuTempHist.ToArray(), $script:CpuFreqHist.ToArray(), $cCnt,
             $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $cInfo,
             'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz', $script:CpuHover)
@@ -908,7 +908,7 @@ function Show-HoverTip([string]$which, $ctrl, [int]$x, [int]$y = 10) {
     $n = $listA.Count
     if ($n -lt 2) { return }
 
-    $ratio = [math]::Max(0.0, [math]::Min(1.0, $x / [double]$ctrl.Width))
+    $ratio = [math]::Max(0.0, [math]::Min(1.0, ($x - 6) / ([double]$ctrl.Width - 12)))
     $idx = [int][math]::Round($ratio * ($n - 1))
 
     if ($isGpu) {
