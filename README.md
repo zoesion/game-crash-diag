@@ -1,4 +1,4 @@
-# BF6监控器
+﻿# BF6监控器
 
 > 战地6 运行时 GPU / CPU 实时监控与崩溃取证工具 —— 专治 `DXGI_ERROR_DEVICE_HUNG` 这类 DX 报错。
 

@@ -29,6 +29,16 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# ── 声明 DPI 感知：不做的话 Windows 会把整个窗口拉伸，字体发虚、字号看着不齐 ──
+Add-Type -Namespace NativeDpi -Name Helper -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+[DllImport("shcore.dll")] public static extern int SetProcessDpiAwareness(int value);
+'@ -ErrorAction SilentlyContinue
+if ('NativeDpi.Helper' -as [type]) {
+    try { [void][NativeDpi.Helper]::SetProcessDpiAwareness(1) }
+    catch { try { [void][NativeDpi.Helper]::SetProcessDPIAware() } catch {} }
+}
+
 # 绘图核心编译（C#，避免 PowerShell 逐点解释）
 $csPath = Join-Path (Split-Path -Parent $PSCommandPath) 'ChartRenderer.cs'
 if (Test-Path $csPath) {
@@ -211,13 +221,19 @@ $C = @{
     Bad     = [System.Drawing.Color]::FromArgb(230, 90, 90)
     Grid    = [System.Drawing.Color]::FromArgb(48, 48, 56)
 }
-$FontUI   = New-Object System.Drawing.Font('微软雅黑', 9)
-$FontBig  = New-Object System.Drawing.Font('Consolas', 22, [System.Drawing.FontStyle]::Bold)
-$FontMid  = New-Object System.Drawing.Font('微软雅黑', 10, [System.Drawing.FontStyle]::Bold)
-$FontSmall= New-Object System.Drawing.Font('微软雅黑', 8)
+# 字号体系：标题 16 / 强调 10 粗 / 正文 9 / 脚注 8
+$FontUI    = New-Object System.Drawing.Font('微软雅黑', 9)
+$FontBody  = New-Object System.Drawing.Font('微软雅黑', 9)
+$FontSmall = $FontBody
+$FontMid   = New-Object System.Drawing.Font('微软雅黑', 10, [System.Drawing.FontStyle]::Bold)
+$FontTitle = New-Object System.Drawing.Font('微软雅黑', 16, [System.Drawing.FontStyle]::Bold)
+$FontVer   = New-Object System.Drawing.Font('微软雅黑', 8)
+$FontBig   = New-Object System.Drawing.Font('Consolas', 25, [System.Drawing.FontStyle]::Bold)
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'BF6监控器'
+$form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+$form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
 $form.Size = New-Object System.Drawing.Size(760, 700)
 $form.MinimumSize = New-Object System.Drawing.Size(680, 660)
 $form.StartPosition = 'CenterScreen'
@@ -232,9 +248,9 @@ $gpuInfo = Get-GpuInfo
 # ── 顶部标题 ──
 $lblTitle = New-Object System.Windows.Forms.Label
 $lblTitle.Text = 'BF6监控器'
-$lblTitle.Font = New-Object System.Drawing.Font('微软雅黑', 14, [System.Drawing.FontStyle]::Bold)
+$lblTitle.Font = $FontTitle
 $lblTitle.ForeColor = $C.Text
-$lblTitle.Location = New-Object System.Drawing.Point(20, 14)
+$lblTitle.Location = New-Object System.Drawing.Point(20, 8)
 $lblTitle.AutoSize = $true
 $form.Controls.Add($lblTitle)
 
@@ -243,7 +259,7 @@ $modeTxt = if ($script:HasNvidia) { 'NVIDIA 模式' } else { '通用模式（无
 $lblSub.Text = "$($gpuInfo.Name)   驱动 $($gpuInfo.Driver)   ·   $modeTxt"
 $lblSub.Font = $FontSmall
 $lblSub.ForeColor = $C.Dim
-$lblSub.Location = New-Object System.Drawing.Point(22, 44)
+$lblSub.Location = New-Object System.Drawing.Point(22, 42)
 $lblSub.AutoSize = $true
 $form.Controls.Add($lblSub)
 
@@ -252,7 +268,7 @@ $lblStatus = New-Object System.Windows.Forms.Label
 $lblStatus.Text = '○ 待机'
 $lblStatus.Font = $FontMid
 $lblStatus.ForeColor = $C.Dim
-$lblStatus.Location = New-Object System.Drawing.Point(560, 22)
+$lblStatus.Location = New-Object System.Drawing.Point(548, 16)
 $lblStatus.Size = New-Object System.Drawing.Size(170, 24)
 $lblStatus.TextAlign = 'MiddleRight'
 $form.Controls.Add($lblStatus)
@@ -324,8 +340,8 @@ $chart.Size = New-Object System.Drawing.Size($chartW, $chartH)
 $chart.BackColor = $C.Card
 $form.Controls.Add($chart)
 
-$chartBmp = New-Object System.Drawing.Bitmap($chartW, $chartH)
-$chart.Image = $chartBmp
+$chart.Image = $null
+
 
 # ── CPU 走势图 ──
 $cpuChart = New-Object System.Windows.Forms.PictureBox
@@ -333,8 +349,9 @@ $cpuChart.Location = New-Object System.Drawing.Point(20, 368)
 $cpuChart.Size = New-Object System.Drawing.Size($chartW, 110)
 $cpuChart.BackColor = $C.Card
 $form.Controls.Add($cpuChart)
-$cpuChartBmp = New-Object System.Drawing.Bitmap($chartW, 110)
-$cpuChart.Image = $cpuChartBmp
+# 位图在 Draw-Chart 里按控件实际像素尺寸懒创建（DPI 缩放后尺寸会变）
+$script:chartBmp = $null
+$script:cpuBmp = $null
 
 # ── CPU 型号标题 ──
 $cpuInfo = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -343,7 +360,7 @@ $cpuCoreTxt = if ($cpuInfo) { "$($cpuInfo.NumberOfCores) 核 / $($cpuInfo.Number
 
 $lblCpuModel = New-Object System.Windows.Forms.Label
 $lblCpuModel.Text = "CPU  ·  $cpuNameTxt    $cpuCoreTxt"
-$lblCpuModel.Font = New-Object System.Drawing.Font('微软雅黑', 9, [System.Drawing.FontStyle]::Bold)
+$lblCpuModel.Font = $FontMid
 $lblCpuModel.ForeColor = $C.Dim
 $lblCpuModel.Location = New-Object System.Drawing.Point(22, 268)
 $lblCpuModel.AutoSize = $true
@@ -422,8 +439,8 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v1.4   数据目录: $Root"
-$lblVer.Font = New-Object System.Drawing.Font('微软雅黑', 7)
+$lblVer.Text = "v1.5   数据目录: $Root"
+$lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
@@ -571,19 +588,39 @@ function Write-CrashReport($exitTime, $isCrash = $true, $reason = '') {
 $script:ColGray   = [System.Drawing.Color]::FromArgb(150, 150, 160)
 $script:ColOrange = [System.Drawing.Color]::FromArgb(255, 170, 70)
 
+function Ensure-ChartBitmaps {
+    # 按控件实际像素尺寸创建位图（DPI 缩放后尺寸会变）
+    $w1 = [int]$chart.ClientSize.Width; $h1 = [int]$chart.ClientSize.Height
+    if ($w1 -lt 1 -or $h1 -lt 1) { return $false }
+    if ($null -eq $script:chartBmp -or $script:chartBmp.Width -ne $w1 -or $script:chartBmp.Height -ne $h1) {
+        if ($script:chartBmp) { $script:chartBmp.Dispose() }
+        $script:chartBmp = New-Object System.Drawing.Bitmap($w1, $h1)
+        $chart.Image = $script:chartBmp
+    }
+    $w2 = [int]$cpuChart.ClientSize.Width; $h2 = [int]$cpuChart.ClientSize.Height
+    if ($w2 -lt 1 -or $h2 -lt 1) { return $false }
+    if ($null -eq $script:cpuBmp -or $script:cpuBmp.Width -ne $w2 -or $script:cpuBmp.Height -ne $h2) {
+        if ($script:cpuBmp) { $script:cpuBmp.Dispose() }
+        $script:cpuBmp = New-Object System.Drawing.Bitmap($w2, $h2)
+        $cpuChart.Image = $script:cpuBmp
+    }
+    return $true
+}
+
 function Draw-Chart {
     if ($null -eq $script:TempHist -or $script:TempHist.Count -lt 1) { return }
+    if (-not (Ensure-ChartBitmaps)) { return }
     $cnt = $script:TempHist.Count
     $spanMin = [math]::Round($cnt * ($script:IntervalMs / 1000.0) / 60.0, 1)
     $infoTxt = ("缓存 {0:N0} 点 / 跨度 {1} 分钟 / 采样 {2}ms" -f $cnt, $spanMin, $script:IntervalMs)
 
     if ($script:HasNvidia) {
-        [ChartRenderer]::Render($chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
+        [ChartRenderer]::Render($script:chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
             $C.Card, $C.Grid, $C.Accent, $script:ColGray, $C.Dim, $infoTxt,
             '温度 (°C)', '功耗 (W)', '°C', 'W', $script:GpuHover)
     }
     else {
-        [ChartRenderer]::Render($chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
+        [ChartRenderer]::Render($script:chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
             $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $infoTxt,
             'GPU 占用 (%)', '显存 (MB)', '%', 'MB', $script:GpuHover)
     }
@@ -593,7 +630,7 @@ function Draw-Chart {
         $cCnt = $script:CpuTempHist.Count
         $cSpan = [math]::Round($cCnt * ($script:IntervalMs / 1000.0) / 60.0, 1)
         $cInfo = ("缓存 {0:N0} 点 / 跨度 {1} 分钟" -f $cCnt, $cSpan)
-        [ChartRenderer]::Render($cpuChartBmp, $script:CpuTempHist.ToArray(), $script:CpuFreqHist.ToArray(), $cCnt,
+        [ChartRenderer]::Render($script:cpuBmp, $script:CpuTempHist.ToArray(), $script:CpuFreqHist.ToArray(), $cCnt,
             $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $cInfo,
             'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz', $script:CpuHover)
         $cpuChart.Refresh()
@@ -847,6 +884,17 @@ $form.Add_FormClosing({
     if ($script:Recording) { Stop-Logging }
 })
 
+# ── 按系统 DPI 等比缩放整个界面（字体是点数，天然跟着 DPI 走）──
+$script:DpiScale = 1.0
+try {
+    $gs = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $script:DpiScale = [math]::Round($gs.DpiX / 96.0, 2)
+    $gs.Dispose()
+} catch {}
+if ($script:DpiScale -gt 1.01) {
+    $sz = New-Object System.Drawing.SizeF($script:DpiScale, $script:DpiScale)
+    $form.Scale($sz)
+}
 if ($ForceLog -and -not $script:Recording) { Start-Logging }
 if ($UiTest) {
     # 离屏自检：构建全部控件 + 绘图 + 两次刷新，不弹窗、不抢焦点
