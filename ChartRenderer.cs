@@ -135,10 +135,15 @@ public static class ChartRenderer
                 }
             }
 
-            // 右侧刻度
-            g.DrawString(string.Format("{0:N0}{1}", maxA, unitA), font, brushDim, w - 56f, 22f);
-            g.DrawString(string.Format("{0:N0}{1}", minA, unitA), font, brushDim, w - 56f, h - 20f);
-            g.DrawString(string.Format("{0:N0}{1}", maxB, unitB), font, brushB, w - 128f, 22f);
+            // 右侧刻度（按实际文字宽度排布，DPI 放大后也不会重叠）
+            string sMaxA = string.Format("{0:N0}{1}", maxA, unitA);
+            string sMinA = string.Format("{0:N0}{1}", minA, unitA);
+            string sMaxB = string.Format("{0:N0}{1}", maxB, unitB);
+            float wMaxA = g.MeasureString(sMaxA, font).Width;
+            float wMaxB = g.MeasureString(sMaxB, font).Width;
+            g.DrawString(sMaxA, font, brushDim, w - wMaxA - 8f, 22f);
+            g.DrawString(sMinA, font, brushDim, w - wMaxA - 8f, h - 20f);
+            g.DrawString(sMaxB, font, brushB, w - wMaxA - wMaxB - 34f, 22f);
         }
     }
 }

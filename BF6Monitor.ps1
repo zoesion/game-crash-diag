@@ -255,9 +255,9 @@ $lblTitle.AutoSize = $true
 $form.Controls.Add($lblTitle)
 
 $lblSub = New-Object System.Windows.Forms.Label
-$modeTxt = if ($script:HasNvidia) { 'NVIDIA 模式' } else { '通用模式（无 nvidia-smi）' }
-$lblSub.Text = "$($gpuInfo.Name)   驱动 $($gpuInfo.Driver)   ·   $modeTxt"
-$lblSub.Font = $FontSmall
+$modeTxt = if ($script:HasNvidia) { '' } else { '    （通用模式）' }
+$lblSub.Text = "GPU  ·  $($gpuInfo.Name)    驱动 $($gpuInfo.Driver)$modeTxt"
+$lblSub.Font = $FontMid
 $lblSub.ForeColor = $C.Dim
 $lblSub.Location = New-Object System.Drawing.Point(22, 42)
 $lblSub.AutoSize = $true
@@ -439,7 +439,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v1.5   数据目录: $Root"
+$lblVer.Text = "v1.6   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
