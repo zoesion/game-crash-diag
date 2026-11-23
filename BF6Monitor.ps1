@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     实时显示 GPU 温度/功耗/频率/占用/降频原因，并自动把数据记成 CSV。
-    检测到 bf6.exe 运行时自动开始记录，游戏退出（崩溃）时自动生成崩溃报告。
+    检测到任意全屏游戏运行时自动开始记录，游戏退出（崩溃）时自动生成崩溃报告。
 
 .PARAMETER SelfTest
     无界面自检：采样 3 次并写一条测试记录后退出，用于验证环境。
@@ -152,6 +152,66 @@ try {
     if ($c0 -and $c0.MaxClockSpeed) { $script:CpuMaxMHz = [int]$c0.MaxClockSpeed }
 } catch {}
 
+# ── 通用游戏检测 ──
+# 不依赖游戏名单：全屏窗口（≥90% 屏幕面积）+ 非系统/工具进程 = 游戏
+Add-Type -Namespace W32Game -Name Detect -MemberDefinition @"
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+[StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+"@ -ErrorAction SilentlyContinue
+
+$script:ExcludeProcs = @(
+    'explorer', 'dwm', 'powershell', 'pwsh', 'WindowsTerminal', 'cmd', 'conhost',
+    'BF6Monitor', 'chrome', 'msedge', 'firefox', 'iexplore',
+    'discord', 'teams', 'slack', 'code', 'devenv',
+    'Taskmgr', 'ApplicationFrameHost', 'SearchHost', 'StartMenuExperienceHost',
+    'TextInputHost', 'SystemSettings', 'ShellExperienceHost', 'LockApp', 'PhoneExperienceHost',
+    # 游戏内叠加层（全屏但绝不能被当成游戏）
+    'NVIDIA Overlay', 'NVIDIA Share', 'NVIDIA App', 'nvsphelper64', 'nvcontainer',
+    'gameoverlayui', 'gameoverlayui64', 'steamwebhelper', 'steam',
+    'RTSS', 'RTSSHooksLoader64', 'MSIAfterburner', 'RivaTuner Statistics Server',
+    'wallpaper64', 'wallpaper32', 'wallpaper32', 'RazerAppEngine', 'RzSDKServer',
+    'RzChromaStreamServer', 'SyserrorOverlay', 'TranslucentTB', 'Rainmeter'
+)
+# 这些路径下的进程一律不当游戏（叠加层/启动器/系统组件）
+$script:ExcludePaths = @('\Windows\', '\NVIDIA Corporation\', '\Steam\bin\', '\Razer\', '\ProgramData\Microsoft\Windows Defender\')
+$script:GameName = $null
+$script:GameScanAt = $null
+$script:GameScanResult = $null
+
+function Find-RunningGame {
+    if (-not ('W32Game.Detect' -as [type])) { return $null }
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $minW = $screen.Width * 0.88
+    $minH = $screen.Height * 0.88
+
+    $candidates = @()
+    foreach ($proc in [System.Diagnostics.Process]::GetProcesses()) {
+        try {
+            if ($proc.Id -eq $PID) { continue }
+            if ($proc.MainWindowHandle -eq [IntPtr]::Zero) { continue }
+            if ($script:ExcludeProcs -contains $proc.ProcessName) { continue }
+            $exe = $null
+            try { $exe = $proc.MainModule.FileName } catch { $exe = $null }
+            # 读不到路径（提权进程，带反作弊的游戏常见）时，不跳过，靠内存占比判断
+            if ($exe) {
+                $skip = $false
+                foreach ($frag in $script:ExcludePaths) { if ($exe -like "*$frag*") { $skip = $true; break } }
+                if ($skip) { continue }
+            }
+
+            $rect = New-Object W32Game.Detect+RECT
+            if (-not [W32Game.Detect]::GetWindowRect($proc.MainWindowHandle, [ref]$rect)) { continue }
+            if (($rect.Right - $rect.Left) -lt $minW) { continue }
+            if (($rect.Bottom - $rect.Top) -lt $minH) { continue }
+
+            $candidates += [pscustomobject]@{ Proc = $proc; Mem = $proc.WorkingSet64 }
+        }
+        catch {}
+    }
+    if ($candidates.Count -eq 0) { return $null }
+    # 多个全屏进程时，取内存占用最大的（游戏通常 GB 级，工具类只有几十 MB）
+    return ($candidates | Sort-Object Mem -Descending | Select-Object -First 1).Proc
+}
 # ── CPU 采样：全部走 .NET 性能计数器（单次 <1ms，不再阻塞界面）──
 $script:PcPerf = New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Performance', '_Total')
 $script:PcTime = New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Time', '_Total')
@@ -536,7 +596,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.7   数据目录: $Root"
+$lblVer.Text = "v2.9   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(12, 618)
@@ -571,7 +631,7 @@ function Start-Logging([string]$Category = 'system') {
     $sub = Join-Path $LogDir $Category
     if (-not (Test-Path $sub)) { New-Item -ItemType Directory -Force -Path $sub | Out-Null }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $prefix = if ($Category -eq 'bf6') { 'bf6' } else { 'sys' }
+    $prefix = if ($Category -eq 'system') { 'sys' } else { $Category }
     $script:LogCategory = $Category
     $script:LogFile = Join-Path $sub "$prefix-$stamp.csv"
     $hdr = '时间,GPU温度(°C),GPU功耗(W),GPU核心频率(MHz),GPU显存频率(MHz),GPU占用(%),显存占用(%),显存已用(MB),电源状态,降频原因码,功耗墙,硬件降频,温度墙,降频说明,CPU温度(°C),CPU频率(MHz),CPU占用(%),活跃核心数,总核心数,内存占用(%)'
@@ -724,12 +784,13 @@ function Write-CrashReport($exitTime, $isCrash = $true, $reason = '') {
     $sb = New-Object System.Text.StringBuilder
     function L($t) { [void]$sb.AppendLine($t) }
 
+    $gameLabel = if ($script:LogCategory -and $script:LogCategory -ne 'system') { $script:LogCategory } else { '系统' }
     L ('=' * 66)
     if ($isCrash) {
-        L "BF6 崩溃报告  $($exitTime.ToString('yyyy-MM-dd HH:mm:ss'))    [判定依据: $reason]"
+        L "$gameLabel 崩溃报告  $($exitTime.ToString('yyyy-MM-dd HH:mm:ss'))    [判定依据: $reason]"
     }
     else {
-        L "BF6 对局记录（正常退出）  $($exitTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+        L "$gameLabel 运行记录（正常退出）  $($exitTime.ToString('yyyy-MM-dd HH:mm:ss'))"
     }
     L ('=' * 66)
     if ($script:GameStart) {
@@ -946,14 +1007,19 @@ function Update-UI {
     Draw-Chart
 
     # 游戏进程检测（自动记录 + 崩溃报告）
-    $game = Get-Process bf6 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $script:GameScanAt -or ((Get-Date) - $script:GameScanAt).TotalSeconds -ge 1) {
+        $script:GameScanResult = Find-RunningGame
+        $script:GameScanAt = Get-Date
+    }
+    $game = $script:GameScanResult
     if ($game) {
         if (-not $script:GameSeen) {
             $script:GameSeen = $true
             $script:GameStart = $game.StartTime
             if ($script:Recording) { Stop-Logging }
-            Start-Logging 'bf6'
-            $lblHint.Text = "已检测到 bf6.exe 运行，正在记录到 logs\bf6\。"
+            $script:GameName = $game.ProcessName
+            Start-Logging $script:GameName
+            $lblHint.Text = "已检测到游戏 $($game.ProcessName)（$($game.MainWindowTitle)），正在记录到 logs\$($game.ProcessName)\。"
         }
         $elapsed = [math]::Round(((Get-Date) - $script:GameStart).TotalMinutes, 1)
         if ($script:Recording) {
@@ -972,13 +1038,16 @@ function Update-UI {
                     $lblHint.Text = "⚠ 判定为崩溃（$($verdict.Reason)），报告: $(Split-Path $rep -Leaf)"
                     $lblHint.ForeColor = $C.Bad
                     [System.Windows.Forms.MessageBox]::Show(
-                        "检测到 bf6.exe 异常退出（$($verdict.Reason)）。`n`n崩溃报告已保存：`n$rep`n`n记录条数: $($script:LogCount)",
+                        "检测到 $($script:GameName) 异常退出（$($verdict.Reason)）。`n`n崩溃报告已保存：`n$rep`n`n记录条数: $($script:LogCount)",
                         'BF6监控器 — 检测到崩溃', 'OK', 'Warning') | Out-Null
                 }
                 else {
                     $lblHint.Text = "游戏正常退出，对局记录已保存: $(Split-Path $rep -Leaf)"
                     $lblHint.ForeColor = $C.Dim
                 }
+                $script:GameName = $null
+$script:GameScanAt = $null
+$script:GameScanResult = $null
                 Start-Logging 'system'
                 $lblHint.Text = "$($lblHint.Text)  已切回系统监控 logs\system\"
             }
@@ -1079,7 +1148,7 @@ $cpuChart.Add_MouseLeave({
 # ════════════════════════════════ 事件绑定 ════════════════════════════════
 $btnStart.Add_Click({
     if (-not $script:Recording) {
-        $cat = if (Get-Process bf6 -ErrorAction SilentlyContinue) { 'bf6' } else { 'system' }
+        $cat = if ($script:GameName) { $script:GameName } else { 'system' }
         Start-Logging $cat
         $lblHint.Text = "已手动开始记录（logs\$cat\）。"
     }
@@ -1100,7 +1169,7 @@ function Open-FolderWithFeedback($btn, $normalText, $path) {
 }
 
 $btnLogs.Add_Click({
-    $cat = if (Get-Process bf6 -ErrorAction SilentlyContinue) { 'bf6' } else { 'system' }
+    $cat = if ($script:GameName) { $script:GameName } else { 'system' }
     $target = Join-Path $LogDir $cat
     if (-not (Test-Path $target)) { $target = $LogDir }
     Open-FolderWithFeedback $btnLogs '打开数据目录' $target
@@ -1120,10 +1189,10 @@ $form.Add_Shown({
         $chkAutoStart.Checked = Test-AutoStart
         $script:AutoStartInit = $true
     } catch { $script:AutoStartInit = $true }
-    $hasGame = $null -ne (Get-Process bf6 -ErrorAction SilentlyContinue)
+    $hasGame = $null -ne (Find-RunningGame)
     if (-not $hasGame -and -not $script:Recording) {
         Start-Logging 'system'
-        $lblHint.Text = '未检测到游戏，正在做系统监控（logs\system\）。启动战地6 会自动切换到 logs\bf6\。'
+        $lblHint.Text = '未检测到游戏，正在做系统监控（logs\system\）。启动任意全屏游戏会自动切换记录。'
     }
     Update-UI
 })
@@ -1281,7 +1350,7 @@ function Show-MainWindow {
 
 $miShow.Add_Click({ Show-MainWindow })
 $miFolder.Add_Click({
-    $cat = if (Get-Process bf6 -ErrorAction SilentlyContinue) { 'bf6' } else { 'system' }
+    $cat = if ($script:GameName) { $script:GameName } else { 'system' }
     $target = Join-Path $LogDir $cat
     if (-not (Test-Path $target)) { $target = $LogDir }
     Start-Process -FilePath 'explorer.exe' -ArgumentList "`"$target`""
