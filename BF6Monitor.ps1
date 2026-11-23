@@ -439,7 +439,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v1.8   数据目录: $Root"
+$lblVer.Text = "v1.9   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -903,6 +903,26 @@ try {
 if ($script:DpiScale -gt 1.01) {
     $sz = New-Object System.Drawing.SizeF($script:DpiScale, $script:DpiScale)
     $form.Scale($sz)
+}
+# ── 单实例保护：重复点图标只保留一个实例 ──
+if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog)) {
+    $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\BF6Monitor_SingleInstance')
+    if (-not $script:SingleMutex.WaitOne(0)) {
+        # 已有实例：把它的窗口拉到前台，然后静默退出
+        try {
+            Add-Type -Namespace W32Win -Name Fg -MemberDefinition @"
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+"@ -ErrorAction SilentlyContinue
+            $h = [W32Win.Fg]::FindWindow($null, 'BF6监控器')
+            if ($h -ne [IntPtr]::Zero) {
+                [void][W32Win.Fg]::ShowWindow($h, 9)
+                [void][W32Win.Fg]::SetForegroundWindow($h)
+            }
+        } catch {}
+        exit
+    }
 }
 if ($ForceLog -and -not $script:Recording) { Start-Logging }
 if ($UiTest) {
