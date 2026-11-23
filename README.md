@@ -236,9 +236,12 @@ BF6Monitor.ps1 -Shot out.png       # 离屏截图
 程序必须开着才有效。没开的话只能用 `tools\collect-forensics.ps1` 事后捞事件日志（没有秒级遥测）。
 
 **Q: 怎么开机自启**
-勾选主界面右下角的「开机自动启动」即可，会写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，
-开机后自动最小化运行并开始记录。取消勾选就移除。
-（不需要手动往启动文件夹拖快捷方式了）
+勾选主界面右下角的「开机自动启动」即可，会写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`。
+开机后**直接进托盘，不弹窗口**，后台自动开始记录。取消勾选就移除。
+
+**Q: 关掉窗口后程序还在跑？**
+是的。点 X 只是收到托盘继续记录，双击托盘图标可以重新打开。
+要真正退出，右键托盘图标 → 退出。
 
 ---
 

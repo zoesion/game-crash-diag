@@ -19,6 +19,7 @@ param(
     [string]$Shot = '',
     [int]$FillPoints = 0,
     [switch]$Minimized,
+    [switch]$Tray,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -513,7 +514,7 @@ function Set-AutoStart([bool]$enable) {
         if ($enable) {
             $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
             $appPath = Join-Path $Root 'BF6Monitor.ps1'
-            $cmd = "`"$psExe`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$appPath`" -Minimized -IntervalMs 500"
+            $cmd = "`"$psExe`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$appPath`" -Tray -IntervalMs 500"
             New-ItemProperty -Path $script:RunKey -Name $script:RunName -Value $cmd -PropertyType String -Force | Out-Null
         }
         else {
@@ -533,7 +534,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.3   数据目录: $Root"
+$lblVer.Text = "v2.4   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -1003,6 +1004,7 @@ $script:Timer.Add_Tick({ try { Update-UI } catch { $lblStatus.Text = '✕ 错误
 
 $form.Add_Shown({
     $script:Timer.Start()
+    if ($Tray) { $form.Hide() }
     try {
         $chkAutoStart.Checked = Test-AutoStart
         $script:AutoStartInit = $true
@@ -1034,7 +1036,8 @@ if ($script:DpiScale -gt 1.01) {
 if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\BF6Monitor_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
-        # 已有实例：把它的窗口拉到前台，然后静默退出
+        # 已有实例：把它的窗口拉到前台，然后静默退出（开机自启时不打扰）
+        if (-not $Tray) {
         try {
             Add-Type -Namespace W32Win -Name Fg -MemberDefinition @"
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
@@ -1047,6 +1050,7 @@ if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog)) {
                 [void][W32Win.Fg]::SetForegroundWindow($h)
             }
         } catch {}
+        }
         exit
     }
 }
@@ -1121,8 +1125,72 @@ if ($Shot) {
     exit 0
 }
 
+# ════════════════════════════════ 托盘图标 ════════════════════════════════
+$script:ExitFlag = $false
+$trayIcon = New-Object System.Windows.Forms.NotifyIcon
+try {
+    $icoPath = Join-Path $Root 'app.ico'
+    if (Test-Path $icoPath) { $trayIcon.Icon = New-Object System.Drawing.Icon($icoPath) }
+    else { $trayIcon.Icon = [System.Drawing.SystemIcons]::Application }
+} catch { $trayIcon.Icon = [System.Drawing.SystemIcons]::Application }
+$trayIcon.Text = 'BF6监控器'
+$trayIcon.Visible = $true
+
+$trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$miShow = $trayMenu.Items.Add('显示主界面')
+$miFolder = $trayMenu.Items.Add('打开数据目录')
+[void]$trayMenu.Items.Add('-')
+$miExit = $trayMenu.Items.Add('退出')
+$trayIcon.ContextMenuStrip = $trayMenu
+
+function Show-MainWindow {
+    $form.ShowInTaskbar = $true
+    $form.Show()
+    $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal
+    $form.CenterToScreen()
+    $form.Activate()
+    $form.BringToFront()
+}
+
+$miShow.Add_Click({ Show-MainWindow })
+$miFolder.Add_Click({
+    $cat = if (Get-Process bf6 -ErrorAction SilentlyContinue) { 'bf6' } else { 'system' }
+    $target = Join-Path $LogDir $cat
+    if (-not (Test-Path $target)) { $target = $LogDir }
+    Start-Process -FilePath 'explorer.exe' -ArgumentList "`"$target`""
+})
+$miExit.Add_Click({
+    $script:ExitFlag = $true
+    $trayIcon.Visible = $false
+    $trayIcon.Dispose()
+    $form.Close()
+})
+$trayIcon.Add_DoubleClick({ Show-MainWindow })
+$trayIcon.Add_MouseClick({
+    param($s, $e)
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Show-MainWindow }
+})
+
+# 点 X 不退出，收到托盘继续记录
+$form.Add_FormClosing({
+    param($s, $e)
+    if (-not $script:ExitFlag) {
+        $e.Cancel = $true
+        $form.Hide()
+        $form.ShowInTaskbar = $false
+        try {
+            $trayIcon.ShowBalloonTip(1500, 'BF6监控器', '已最小化到托盘，仍在后台记录。双击图标可重新打开。', [System.Windows.Forms.ToolTipIcon]::Info)
+        } catch {}
+    }
+})
 if ($Minimized) {
     $form.WindowState = 'Minimized'
     $form.ShowInTaskbar = $true
+}
+if ($Tray) {
+    # 开机自启：不占任务栏，直接藏到托盘
+    $form.StartPosition = 'Manual'
+    $form.Location = New-Object System.Drawing.Point(-32000, -32000)
+    $form.ShowInTaskbar = $false
 }
 [System.Windows.Forms.Application]::Run($form)
