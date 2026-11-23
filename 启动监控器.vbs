@@ -1,4 +1,4 @@
-﻿' BF6 GPU 监控器 - 静默启动（不弹黑框）
+' BF6 Monitor - silent launcher (ASCII only, no BOM: VBScript does not accept UTF-8 BOM)
 Option Explicit
 Dim sh, base
 Set sh = CreateObject("WScript.Shell")
