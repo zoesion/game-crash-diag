@@ -329,18 +329,31 @@ $chart.Image = $chartBmp
 
 # ── CPU 走势图 ──
 $cpuChart = New-Object System.Windows.Forms.PictureBox
-$cpuChart.Location = New-Object System.Drawing.Point(20, 352)
+$cpuChart.Location = New-Object System.Drawing.Point(20, 368)
 $cpuChart.Size = New-Object System.Drawing.Size($chartW, 110)
 $cpuChart.BackColor = $C.Card
 $form.Controls.Add($cpuChart)
 $cpuChartBmp = New-Object System.Drawing.Bitmap($chartW, 110)
 $cpuChart.Image = $cpuChartBmp
 
+# ── CPU 型号标题 ──
+$cpuInfo = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+$cpuNameTxt = if ($cpuInfo) { $cpuInfo.Name.Trim() } else { 'CPU' }
+$cpuCoreTxt = if ($cpuInfo) { "$($cpuInfo.NumberOfCores) 核 / $($cpuInfo.NumberOfLogicalProcessors) 线程" } else { '' }
+
+$lblCpuModel = New-Object System.Windows.Forms.Label
+$lblCpuModel.Text = "CPU  ·  $cpuNameTxt    $cpuCoreTxt"
+$lblCpuModel.Font = New-Object System.Drawing.Font('微软雅黑', 9, [System.Drawing.FontStyle]::Bold)
+$lblCpuModel.ForeColor = $C.Dim
+$lblCpuModel.Location = New-Object System.Drawing.Point(22, 268)
+$lblCpuModel.AutoSize = $true
+$form.Controls.Add($lblCpuModel)
+
 # ── CPU 四个卡片 ──
-$cardCpuTemp  = New-Card 20  272 170 74 'CPU 温度'
-$cardCpuClock = New-Card 200 272 170 74 'CPU 频率'
-$cardCpuUtil  = New-Card 380 272 170 74 'CPU 占用'
-$cardCpuCores = New-Card 560 272 172 74 '活跃核心'
+$cardCpuTemp  = New-Card 20  288 170 74 'CPU 温度'
+$cardCpuClock = New-Card 200 288 170 74 'CPU 频率'
+$cardCpuUtil  = New-Card 380 288 170 74 'CPU 占用'
+$cardCpuCores = New-Card 560 288 172 74 '活跃核心'
 
 $valCpuTemp  = Add-BigValue $cardCpuTemp  'v'
 $valCpuClock = Add-BigValue $cardCpuClock 'v'
@@ -366,7 +379,7 @@ $lblDetail = New-Object System.Windows.Forms.Label
 $lblDetail.Text = 'CPU -- / -- / --      显存 -- / -- MB      降频 --'
 $lblDetail.Font = $FontSmall
 $lblDetail.ForeColor = $C.Dim
-$lblDetail.Location = New-Object System.Drawing.Point(20, 470)
+$lblDetail.Location = New-Object System.Drawing.Point(20, 486)
 $lblDetail.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblDetail)
 
@@ -374,7 +387,7 @@ $lblStats = New-Object System.Windows.Forms.Label
 $lblStats.Text = '本次未记录'
 $lblStats.Font = $FontSmall
 $lblStats.ForeColor = $C.Dim
-$lblStats.Location = New-Object System.Drawing.Point(20, 492)
+$lblStats.Location = New-Object System.Drawing.Point(20, 508)
 $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
@@ -382,7 +395,7 @@ $form.Controls.Add($lblStats)
 function New-Button($x, $text, $w = 130) {
     $b = New-Object System.Windows.Forms.Button
     $b.Text = $text
-    $b.Location = New-Object System.Drawing.Point($x, 520)
+    $b.Location = New-Object System.Drawing.Point($x, 536)
     $b.Size = New-Object System.Drawing.Size($w, 34)
     $b.FlatStyle = 'Flat'
     $b.FlatAppearance.BorderSize = 1
@@ -404,15 +417,15 @@ $lblHint = New-Object System.Windows.Forms.Label
 $lblHint.Text = '提示：游戏启动后会自动开始记录；游戏退出或崩溃时自动生成报告。'
 $lblHint.Font = $FontSmall
 $lblHint.ForeColor = $C.Dim
-$lblHint.Location = New-Object System.Drawing.Point(20, 566)
+$lblHint.Location = New-Object System.Drawing.Point(20, 582)
 $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v1.3   数据目录: $Root"
+$lblVer.Text = "v1.4   数据目录: $Root"
 $lblVer.Font = New-Object System.Drawing.Font('微软雅黑', 7)
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
-$lblVer.Location = New-Object System.Drawing.Point(20, 602)
+$lblVer.Location = New-Object System.Drawing.Point(20, 618)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
 $form.Controls.Add($lblVer)
 
@@ -431,6 +444,9 @@ $script:PowerHist  = New-Object 'System.Collections.Generic.List[double]'
 $script:LastSample = $null
 $script:Tick       = 0
 $script:CpuLast    = $null
+$script:GpuHover   = -1
+$script:CpuHover   = -1
+$script:LastHoverMs = 0
 $script:CpuTempHist = New-Object 'System.Collections.Generic.List[double]'
 $script:CpuFreqHist = New-Object 'System.Collections.Generic.List[double]'
 $script:LastCpuTemp = 0.0
@@ -564,12 +580,12 @@ function Draw-Chart {
     if ($script:HasNvidia) {
         [ChartRenderer]::Render($chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
             $C.Card, $C.Grid, $C.Accent, $script:ColGray, $C.Dim, $infoTxt,
-            '温度 (°C)', '功耗 (W)', '°C', 'W')
+            '温度 (°C)', '功耗 (W)', '°C', 'W', $script:GpuHover)
     }
     else {
         [ChartRenderer]::Render($chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
             $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $infoTxt,
-            'GPU 占用 (%)', '显存 (MB)', '%', 'MB')
+            'GPU 占用 (%)', '显存 (MB)', '%', 'MB', $script:GpuHover)
     }
     $chart.Refresh()
 
@@ -579,7 +595,7 @@ function Draw-Chart {
         $cInfo = ("缓存 {0:N0} 点 / 跨度 {1} 分钟" -f $cCnt, $cSpan)
         [ChartRenderer]::Render($cpuChartBmp, $script:CpuTempHist.ToArray(), $script:CpuFreqHist.ToArray(), $cCnt,
             $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $cInfo,
-            'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz')
+            'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz', $script:CpuHover)
         $cpuChart.Refresh()
     }
 }
@@ -630,8 +646,14 @@ function Update-UI {
     }
 
     $ramTxt = if ($null -ne $cpu.RamPct) { "{0}%" -f $cpu.RamPct } else { "--" }
-    $lblDetail.Text = "显存 {0:N0} / {1} MB      内存 {2}      降频 {3}      电源 {4}" -f `
-        $s.MemUsed, $memTotal, $ramTxt, $s.Throttle, $s.PState
+    $pstateTxt = switch -Regex ($s.PState) {
+        '^P0$' { 'P0 满速' }
+        '^P[1-3]$' { "$($s.PState) 降频" }
+        '^P[4-9]$' { "$($s.PState) 待机" }
+        default { "$($s.PState)" }
+    }
+    $lblDetail.Text = "显存 {0:N0} / {1} MB      内存 {2}      降频 {3}      性能档 {4}" -f `
+        $s.MemUsed, $memTotal, $ramTxt, $s.Throttle, $pstateTxt
 
     # 记录
     if ($script:Recording) {
@@ -715,6 +737,82 @@ function Update-UI {
         $script:LogCount, $script:ReportCount, $(if ($script:LogFile) { Split-Path $script:LogFile -Leaf } else { '—' })
 }
 
+# ════════════════════════════════ 鼠标悬停提示 ════════════════════════════════
+$tip = New-Object System.Windows.Forms.Label
+$tip.AutoSize = $true
+$tip.BackColor = [System.Drawing.Color]::FromArgb(52, 52, 60)
+$tip.ForeColor = [System.Drawing.Color]::FromArgb(235, 235, 240)
+$tip.Font = New-Object System.Drawing.Font('Consolas', 9)
+$tip.Padding = New-Object System.Windows.Forms.Padding(7, 3, 7, 3)
+$tip.BorderStyle = 'FixedSingle'
+$tip.Visible = $false
+$form.Controls.Add($tip)
+
+function Show-HoverTip([string]$which, $ctrl, [int]$x, [int]$y = 10) {
+    $isGpu = ($which -eq 'gpu')
+    $listA = if ($isGpu) { $script:TempHist } else { $script:CpuTempHist }
+    $listB = if ($isGpu) { $script:PowerHist } else { $script:CpuFreqHist }
+    $n = $listA.Count
+    if ($n -lt 2) { return }
+
+    $ratio = [math]::Max(0.0, [math]::Min(1.0, $x / [double]$ctrl.Width))
+    $idx = [int][math]::Round($ratio * ($n - 1))
+
+    if ($isGpu) {
+        if ($script:GpuHover -eq $idx) { return }
+        $script:GpuHover = $idx
+    }
+    else {
+        if ($script:CpuHover -eq $idx) { return }
+        $script:CpuHover = $idx
+    }
+
+    $va = [double]$listA[$idx]
+    $vb = [double]$listB[$idx]
+    $backSec = [int][math]::Round(($n - 1 - $idx) * ($script:IntervalMs / 1000.0))
+    $ago = if ($backSec -le 0) { '最新' } else { "-${backSec}s" }
+
+    if ($isGpu) {
+        $tip.Text = if ($script:HasNvidia) {
+            "温度 {0:N1}°C   功耗 {1:N0}W   {2}" -f $va, $vb, $ago
+        } else {
+            "占用 {0:N0}%   显存 {1:N0}MB   {2}" -f $va, $vb, $ago
+        }
+    }
+    else {
+        $tip.Text = "温度 {0:N0}°C   频率 {1:N0}MHz   {2}" -f $va, $vb, $ago
+    }
+
+    if (-not $tip.IsHandleCreated) { $null = $tip.Handle }
+    $tip.Visible = $true
+    $tip.BringToFront()
+    $px = $ctrl.Left + $x - [int]($tip.Width / 2)
+    $px = [math]::Max(4, [math]::Min($form.ClientSize.Width - $tip.Width - 4, $px))
+    $py = $ctrl.Top + $y - $tip.Height - 12
+    if ($py -lt $ctrl.Top + 4) { $py = $ctrl.Top + 4 }
+    if ($py -gt ($ctrl.Top + $ctrl.Height - $tip.Height - 4)) { $py = $ctrl.Top + $ctrl.Height - $tip.Height - 4 }
+    $tip.Location = New-Object System.Drawing.Point($px, $py)
+
+    # 重绘节流，避免鼠标激动时卡顿
+    $nowTick = [Environment]::TickCount
+    if (($nowTick - $script:LastHoverMs) -ge 60) {
+        $script:LastHoverMs = $nowTick
+        Draw-Chart
+    }
+}
+
+$chart.Add_MouseMove({ param($s, $e) Show-HoverTip 'gpu' $s $e.X $e.Y })
+$chart.Add_MouseLeave({
+    $script:GpuHover = -1
+    $tip.Visible = $false
+    Draw-Chart
+})
+$cpuChart.Add_MouseMove({ param($s, $e) Show-HoverTip 'cpu' $s $e.X $e.Y })
+$cpuChart.Add_MouseLeave({
+    $script:CpuHover = -1
+    $tip.Visible = $false
+    Draw-Chart
+})
 # ════════════════════════════════ 事件绑定 ════════════════════════════════
 $btnStart.Add_Click({
     if (-not $script:Recording) {
@@ -805,6 +903,12 @@ if ($Shot) {
     Initialize-Handles $form
     $form.PerformLayout()
     [System.Windows.Forms.Application]::DoEvents()
+    if ($FillPoints -gt 0) {
+        Show-HoverTip 'gpu' $chart ([int]($chart.Width * 0.62)) 40
+        [System.Windows.Forms.Application]::DoEvents()
+        Write-Output ("提示框: visible={0} size={1}x{2} pos=({3},{4}) text={5}" -f `
+            $tip.Visible, $tip.Width, $tip.Height, $tip.Left, $tip.Top, $tip.Text)
+    }
     $bmp2 = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
     $form.DrawToBitmap($bmp2, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
     $bmp2.Save($Shot, [System.Drawing.Imaging.ImageFormat]::Png)

@@ -1,4 +1,4 @@
-// BF6 监控器 —— 曲线绘制核心（编译成 .NET 类型，避免 PowerShell 逐点解释的开销）
+﻿// BF6 监控器 —— 曲线绘制核心（编译成 .NET 类型，避免 PowerShell 逐点解释的开销）
 // 由 BF6Monitor.ps1 通过 Add-Type 加载
 using System;
 using System.Collections.Generic;
@@ -15,7 +15,8 @@ public static class ChartRenderer
     /// </summary>
     public static void Render(Bitmap bmp, double[] a, double[] b, int count,
                               Color card, Color grid, Color colorA, Color colorB, Color dim,
-                              string info, string labelA, string labelB, string unitA, string unitB)
+                              string info, string labelA, string labelB, string unitA, string unitB,
+                              int hover = -1)
     {
         using (Graphics g = Graphics.FromImage(bmp))
         using (Pen penGrid = new Pen(grid, 1f))
@@ -112,6 +113,25 @@ public static class ChartRenderer
                 {
                     g.DrawLines(penB, ptsB);
                     g.DrawLines(penA, ptsA);
+                }
+            }
+
+            // 悬停十字线
+            if (hover >= 0 && hover < count)
+            {
+                float hx = (float)(w * (hover / (double)(count - 1)));
+                using (Pen penH = new Pen(Color.FromArgb(110, 200, 200, 210), 1f))
+                {
+                    penH.DashStyle = DashStyle.Dot;
+                    g.DrawLine(penH, hx, 0, hx, h);
+                }
+                double yA = h - 12 - ((a[hover] - loA) / (hiA - loA)) * (h - 32);
+                double yB = h - 12 - ((b[hover] - loB) / (hiB - loB)) * (h - 32);
+                using (SolidBrush dotA = new SolidBrush(colorA))
+                using (SolidBrush dotB = new SolidBrush(colorB))
+                {
+                    g.FillEllipse(dotA, hx - 3.5f, (float)yA - 3.5f, 7f, 7f);
+                    g.FillEllipse(dotB, hx - 3f, (float)yB - 3f, 6f, 6f);
                 }
             }
 
