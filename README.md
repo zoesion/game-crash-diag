@@ -1,6 +1,8 @@
-﻿# BF6监控器
+﻿# 游戏崩溃诊断器 · GameCrashDiag
 
-> 战地6 运行时 GPU / CPU 实时监控与崩溃取证工具 —— 专治 `DXGI_ERROR_DEVICE_HUNG` 这类 DX 报错。
+> 任意游戏运行时 GPU / CPU 实时监控与崩溃取证工具 —— 专治 `DXGI_ERROR_DEVICE_HUNG` 这类 DX 报错。
+
+**英文名 / 仓库名：GameCrashDiag / game-crash-diag**
 
 一个 PowerShell + WinForms 写的桌面小工具，**零依赖、不需安装运行时**，Windows 自带 PowerShell 就能跑。
 游戏运行时自动记录显卡和处理器状态，崩溃时自动生成带现场数据的报告，用来定位到底是超频、散热、驱动还是硬件的问题。
@@ -53,7 +55,7 @@
 
 1. 下载或解压本仓库
 2. 双击 **`安装.cmd`**
-3. 装到 `%LOCALAPPDATA%\Programs\BF6Monitor`，**不需要管理员权限**
+3. 装到 `%LOCALAPPDATA%\Programs\GameCrashDiag`，**不需要管理员权限**
 
 会自动创建桌面和开始菜单快捷方式，在「设置 → 应用」里可以正常卸载。
 
@@ -127,7 +129,7 @@
 ## 数据在哪
 
 ```
-BF6Monitor\
+GameCrashDiag\
 ├─ logs\
 │  ├─ bf6\       游戏对局遥测（bf6-*.csv）
 │  └─ system\    日常监控（sys-*.csv）
@@ -236,20 +238,20 @@ logs\
 \GPU Adapter Memory(*)\Dedicated Usage
 ```
 
-强制测试通用模式：`BF6Monitor.ps1 -ForceGeneric`
+强制测试通用模式：`GameCrashDiag.ps1 -ForceGeneric`
 
 ---
 
 ## 命令行参数
 
 ```powershell
-BF6Monitor.ps1                     # 正常启动
-BF6Monitor.ps1 -Minimized          # 最小化启动
-BF6Monitor.ps1 -IntervalMs 250     # 改成 250ms 采样（更细，更费 CPU）
-BF6Monitor.ps1 -ForceGeneric       # 强制通用模式
-BF6Monitor.ps1 -SelfTest           # 采集自检
-BF6Monitor.ps1 -UiTest             # 界面自检（不弹窗）
-BF6Monitor.ps1 -Shot out.png       # 离屏截图
+GameCrashDiag.ps1                     # 正常启动
+GameCrashDiag.ps1 -Minimized          # 最小化启动
+GameCrashDiag.ps1 -IntervalMs 250     # 改成 250ms 采样（更细，更费 CPU）
+GameCrashDiag.ps1 -ForceGeneric       # 强制通用模式
+GameCrashDiag.ps1 -SelfTest           # 采集自检
+GameCrashDiag.ps1 -UiTest             # 界面自检（不弹窗）
+GameCrashDiag.ps1 -Shot out.png       # 离屏截图
 ```
 
 ---

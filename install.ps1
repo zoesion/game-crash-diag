@@ -1,10 +1,10 @@
 ﻿<#
 .SYNOPSIS
-    BF6监控器 安装脚本
+    游戏崩溃诊断器 安装脚本
 
 .DESCRIPTION
     把程序安装到当前用户目录（不需要管理员权限），并创建快捷方式和卸载入口。
-    安装位置：%LOCALAPPDATA%\Programs\BF6Monitor
+    安装位置：%LOCALAPPDATA%\Programs\GameCrashDiag
 #>
 [CmdletBinding()]
 param(
@@ -15,7 +15,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
-    $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\BF6Monitor'
+    $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\GameCrashDiag'
 }
 $src = $PSScriptRoot
 
@@ -30,7 +30,7 @@ try {
 
 Write-Host ''
 Write-Host '  ============================================' -ForegroundColor Cyan
-Write-Host '   BF6监控器  安装' -ForegroundColor Cyan
+Write-Host '   游戏崩溃诊断器  安装' -ForegroundColor Cyan
 Write-Host '  ============================================' -ForegroundColor Cyan
 Write-Host ''
 
@@ -40,7 +40,7 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 foreach ($sub in 'logs','reports','backup') {
     New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir $sub) | Out-Null
 }
-$files = @('BF6Monitor.ps1','ChartRenderer.cs','启动监控器.vbs','调试启动.cmd','app.ico','README.md')
+$files = @('GameCrashDiag.ps1','ChartRenderer.cs','启动诊断器.vbs','调试启动.cmd','app.ico','README.md')
 foreach ($f in $files) {
     $p = Join-Path $src $f
     if (Test-Path $p) { Copy-Item $p $InstallDir -Force }
@@ -58,7 +58,7 @@ Write-Host "        -> $InstallDir" -ForegroundColor Green
 Write-Host '  [2/4] 创建快捷方式...' -ForegroundColor Yellow
 $ws = New-Object -ComObject WScript.Shell
 $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
-$vbs = Join-Path $InstallDir '启动监控器.vbs'
+$vbs = Join-Path $InstallDir '启动诊断器.vbs'
 $icon = Join-Path $InstallDir 'app.ico'
 
 function New-Shortcut($lnkPath, $target, $arguments, $workdir, $iconPath, $desc) {
@@ -72,22 +72,22 @@ function New-Shortcut($lnkPath, $target, $arguments, $workdir, $iconPath, $desc)
 }
 
 $desktop = [Environment]::GetFolderPath('Desktop')
-New-Shortcut (Join-Path $desktop 'BF6监控器.lnk') $wscript "`"$vbs`"" $InstallDir $icon '战地6 GPU/CPU 监控与崩溃取证'
+New-Shortcut (Join-Path $desktop '游戏崩溃诊断器.lnk') $wscript "`"$vbs`"" $InstallDir $icon '战地6 GPU/CPU 监控与崩溃取证'
 
-$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'BF6监控器'
+$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) '游戏崩溃诊断器'
 New-Item -ItemType Directory -Force -Path $startMenu | Out-Null
-New-Shortcut (Join-Path $startMenu 'BF6监控器.lnk') $wscript "`"$vbs`"" $InstallDir $icon '战地6 GPU/CPU 监控与崩溃取证'
-New-Shortcut (Join-Path $startMenu '卸载 BF6监控器.lnk') 'powershell.exe' `
-    "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'uninstall.ps1')`"" $InstallDir $icon '卸载 BF6监控器'
+New-Shortcut (Join-Path $startMenu '游戏崩溃诊断器.lnk') $wscript "`"$vbs`"" $InstallDir $icon '战地6 GPU/CPU 监控与崩溃取证'
+New-Shortcut (Join-Path $startMenu '卸载 游戏崩溃诊断器.lnk') 'powershell.exe' `
+    "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'uninstall.ps1')`"" $InstallDir $icon '卸载 游戏崩溃诊断器'
 Write-Host '        -> 桌面 + 开始菜单' -ForegroundColor Green
 
 # ── 3. 卸载信息 ──
 Write-Host '  [3/4] 注册卸载入口...' -ForegroundColor Yellow
-$regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BF6Monitor'
+$regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCrashDiag'
 New-Item -Path $regPath -Force | Out-Null
 $size = (Get-ChildItem $InstallDir -Recurse -File | Measure-Object Length -Sum).Sum
 $props = @{
-    DisplayName     = 'BF6监控器'
+    DisplayName     = '游戏崩溃诊断器'
     DisplayVersion  = '1.1'
     Publisher       = '本地工具'
     InstallLocation = $InstallDir

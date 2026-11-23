@@ -1,4 +1,4 @@
-# 运行数据
+﻿# 运行数据
 logs/
 reports/
 backup/
@@ -11,3 +11,6 @@ _build/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# 本地 GitHub 配置
+.github-remote

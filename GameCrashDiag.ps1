@@ -161,7 +161,7 @@ Add-Type -Namespace W32Game -Name Detect -MemberDefinition @"
 
 $script:ExcludeProcs = @(
     'explorer', 'dwm', 'powershell', 'pwsh', 'WindowsTerminal', 'cmd', 'conhost',
-    'BF6Monitor', 'chrome', 'msedge', 'firefox', 'iexplore',
+    'GameCrashDiag', 'chrome', 'msedge', 'firefox', 'iexplore',
     'discord', 'teams', 'slack', 'code', 'devenv',
     'Taskmgr', 'ApplicationFrameHost', 'SearchHost', 'StartMenuExperienceHost',
     'TextInputHost', 'SystemSettings', 'ShellExperienceHost', 'LockApp', 'PhoneExperienceHost',
@@ -327,7 +327,7 @@ $FontVer   = New-Object System.Drawing.Font('微软雅黑', 8)
 $FontBig   = New-Object System.Drawing.Font('Consolas', 25, [System.Drawing.FontStyle]::Bold)
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'BF6监控器'
+$form.Text = '游戏崩溃诊断器'
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
 $form.Size = New-Object System.Drawing.Size(760, 700)
@@ -343,7 +343,7 @@ $gpuInfo = Get-GpuInfo
 
 # ── 顶部标题 ──
 $lblTitle = New-Object System.Windows.Forms.Label
-$lblTitle.Text = 'BF6监控器'
+$lblTitle.Text = '游戏崩溃诊断器'
 $lblTitle.Font = $FontTitle
 $lblTitle.ForeColor = $C.Text
 $lblTitle.Location = New-Object System.Drawing.Point(12, 8)
@@ -532,7 +532,7 @@ $btnRep   = New-Button 450 '打开崩溃报告'
 
 # ── 右下角：开机自启 ──
 $script:RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-$script:RunName = 'BF6Monitor'
+$script:RunName = 'GameCrashDiag'
 $script:AutoStartInit = $false
 
 $chkAutoStart = New-Object System.Windows.Forms.CheckBox
@@ -575,7 +575,7 @@ function Set-AutoStart([bool]$enable) {
     try {
         if ($enable) {
             $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-            $appPath = Join-Path $Root 'BF6Monitor.ps1'
+            $appPath = Join-Path $Root 'GameCrashDiag.ps1'
             $cmd = "`"$psExe`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$appPath`" -Tray -IntervalMs 500"
             New-ItemProperty -Path $script:RunKey -Name $script:RunName -Value $cmd -PropertyType String -Force | Out-Null
         }
@@ -596,7 +596,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.9   数据目录: $Root"
+$lblVer.Text = "v3.0   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(12, 618)
@@ -1039,7 +1039,7 @@ function Update-UI {
                     $lblHint.ForeColor = $C.Bad
                     [System.Windows.Forms.MessageBox]::Show(
                         "检测到 $($script:GameName) 异常退出（$($verdict.Reason)）。`n`n崩溃报告已保存：`n$rep`n`n记录条数: $($script:LogCount)",
-                        'BF6监控器 — 检测到崩溃', 'OK', 'Warning') | Out-Null
+                        '游戏崩溃诊断器 — 检测到崩溃', 'OK', 'Warning') | Out-Null
                 }
                 else {
                     $lblHint.Text = "游戏正常退出，对局记录已保存: $(Split-Path $rep -Leaf)"
@@ -1214,7 +1214,7 @@ if ($script:DpiScale -gt 1.01) {
 }
 # ── 单实例保护：重复点图标只保留一个实例 ──
 if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog)) {
-    $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\BF6Monitor_SingleInstance')
+    $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
         # 已有实例：把它的窗口拉到前台，然后静默退出（开机自启时不打扰）
         if (-not $Tray) {
@@ -1224,7 +1224,7 @@ if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog)) {
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
 [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
 "@ -ErrorAction SilentlyContinue
-            $h = [W32Win.Fg]::FindWindow($null, 'BF6监控器')
+            $h = [W32Win.Fg]::FindWindow($null, '游戏崩溃诊断器')
             if ($h -ne [IntPtr]::Zero) {
                 [void][W32Win.Fg]::ShowWindow($h, 9)
                 [void][W32Win.Fg]::SetForegroundWindow($h)
@@ -1322,7 +1322,7 @@ try {
     if (Test-Path $icoPath) { $trayIcon.Icon = New-Object System.Drawing.Icon($icoPath) }
     else { $trayIcon.Icon = [System.Drawing.SystemIcons]::Application }
 } catch { $trayIcon.Icon = [System.Drawing.SystemIcons]::Application }
-$trayIcon.Text = 'BF6监控器'
+$trayIcon.Text = '游戏崩溃诊断器'
 $trayIcon.Visible = $true
 
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
@@ -1386,7 +1386,7 @@ $form.Add_FormClosing({
         $form.Hide()
         $form.ShowInTaskbar = $false
         try {
-            $trayIcon.ShowBalloonTip(1500, 'BF6监控器', '已最小化到托盘，仍在后台记录。双击图标可重新打开。', [System.Windows.Forms.ToolTipIcon]::Info)
+            $trayIcon.ShowBalloonTip(1500, '游戏崩溃诊断器', '已最小化到托盘，仍在后台记录。双击图标可重新打开。', [System.Windows.Forms.ToolTipIcon]::Info)
         } catch {}
     }
 })

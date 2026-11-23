@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    BF6监控器 卸载脚本
+    游戏崩溃诊断器 卸载脚本
 .DESCRIPTION
     删除程序文件和快捷方式，保留 logs / reports / backup 三个数据目录。
 #>
@@ -8,11 +8,11 @@
 param([switch]$Silent)
 
 $ErrorActionPreference = 'Continue'
-$InstallDir = if ($PSScriptRoot) { $PSScriptRoot } else { Join-Path $env:LOCALAPPDATA 'Programs\BF6Monitor' }
+$InstallDir = if ($PSScriptRoot) { $PSScriptRoot } else { Join-Path $env:LOCALAPPDATA 'Programs\GameCrashDiag' }
 
 if (-not $Silent) {
     Write-Host ''
-    Write-Host '  卸载 BF6监控器' -ForegroundColor Yellow
+    Write-Host '  卸载 游戏崩溃诊断器' -ForegroundColor Yellow
     Write-Host "  位置: $InstallDir" -ForegroundColor Gray
     $ans = Read-Host '  确定卸载吗？(y/N)'
     if ($ans -notmatch '^[Yy]') { Write-Host '  已取消。'; exit 0 }
@@ -28,12 +28,12 @@ try {
 } catch {}
 
 # 快捷方式
-Remove-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'BF6监控器.lnk') -Force -ErrorAction SilentlyContinue
-$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'BF6监控器'
+Remove-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) '游戏崩溃诊断器.lnk') -Force -ErrorAction SilentlyContinue
+$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) '游戏崩溃诊断器'
 Remove-Item $startMenu -Recurse -Force -ErrorAction SilentlyContinue
 
 # 注册表
-Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BF6Monitor' -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCrashDiag' -Recurse -Force -ErrorAction SilentlyContinue
 
 # 程序文件（保留数据目录）
 $keep = @('logs', 'reports', 'backup')
