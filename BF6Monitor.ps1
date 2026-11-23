@@ -152,6 +152,7 @@ try {
 # ── CPU 采样：全部走 .NET 性能计数器（单次 <1ms，不再阻塞界面）──
 $script:PcPerf = New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Performance', '_Total')
 $script:PcTime = New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Time', '_Total')
+$script:PcUtil = New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Utility', '_Total')
 $script:PcMem  = New-Object System.Diagnostics.PerformanceCounter('Memory', 'Available MBytes')
 $script:PcCores = @()
 try {
@@ -167,7 +168,7 @@ try {
     $script:RamTotalMB = [int]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
 } catch {}
 # 预热：性能计数器第一次 NextValue 返回 0
-try { $null = $script:PcPerf.NextValue(); $null = $script:PcTime.NextValue(); $null = $script:PcMem.NextValue()
+try { $null = $script:PcPerf.NextValue(); $null = $script:PcTime.NextValue(); $null = $script:PcUtil.NextValue(); $null = $script:PcMem.NextValue()
       foreach ($c0 in $script:PcCores) { $null = $c0.NextValue() } } catch {}
 $script:CpuTempCache = $null
 $script:CpuTempCacheAt = $null
@@ -179,8 +180,10 @@ function Get-CpuSample {
     try {
         $perf = $script:PcPerf.NextValue()
         if ($perf -gt 0) { $s.MHz = [int][math]::Round($script:CpuMaxMHz * $perf / 100) }
-        $t = $script:PcTime.NextValue()
-        if ($t -ge 0) { $s.Load = [int][math]::Round($t) }
+        # 与任务管理器一致：用 % Processor Utility（含睿频增益），上限 100
+        $u = $script:PcUtil.NextValue()
+        if ($u -ge 0) { $s.Load = [int][math]::Min(100, [math]::Round($u)) }
+        $null = $script:PcTime.NextValue()
     } catch {}
 
     # 逐核活跃数（~7ms）
@@ -530,7 +533,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.2   数据目录: $Root"
+$lblVer.Text = "v2.3   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
