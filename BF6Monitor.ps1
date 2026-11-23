@@ -19,7 +19,7 @@ param(
     [string]$Shot = '',
     [int]$FillPoints = 0,
     [switch]$Minimized,
-    [int]$IntervalMs = 1000,
+    [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
 )
@@ -431,7 +431,7 @@ $btnLogs  = New-Button 290 '打开数据目录'
 $btnRep   = New-Button 430 '打开崩溃报告'
 
 $lblHint = New-Object System.Windows.Forms.Label
-$lblHint.Text = '提示：游戏启动后会自动开始记录；游戏退出或崩溃时自动生成报告。'
+$lblHint.Text = '提示：游戏启动自动记录，退出/崩溃自动生成报告；鼠标移到曲线上可查看该点数值。'
 $lblHint.Font = $FontSmall
 $lblHint.ForeColor = $C.Dim
 $lblHint.Location = New-Object System.Drawing.Point(20, 582)
@@ -439,7 +439,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v1.7   数据目录: $Root"
+$lblVer.Text = "v1.8   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -612,7 +612,8 @@ function Draw-Chart {
     if (-not (Ensure-ChartBitmaps)) { return }
     $cnt = $script:TempHist.Count
     $spanMin = [math]::Round($cnt * ($script:IntervalMs / 1000.0) / 60.0, 1)
-    $infoTxt = ("缓存 {0:N0} 点 / 跨度 {1} 分钟 / 采样 {2}ms" -f $cnt, $spanMin, $script:IntervalMs)
+    $secPerPt = $script:IntervalMs / 1000.0
+    $infoTxt = ("每 {0:g} 秒 1 点 · 共 {1:N0} 点 · 跨度 {2} 分钟" -f $secPerPt, $cnt, $spanMin)
 
     if ($script:HasNvidia) {
         [ChartRenderer]::Render($script:chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
@@ -629,7 +630,7 @@ function Draw-Chart {
     if ($script:CpuTempHist.Count -ge 1) {
         $cCnt = $script:CpuTempHist.Count
         $cSpan = [math]::Round($cCnt * ($script:IntervalMs / 1000.0) / 60.0, 1)
-        $cInfo = ("缓存 {0:N0} 点 / 跨度 {1} 分钟" -f $cCnt, $cSpan)
+        $cInfo = ("每 {0:g} 秒 1 点 · 共 {1:N0} 点 · 跨度 {2} 分钟" -f $secPerPt, $cCnt, $cSpan)
         [ChartRenderer]::Render($script:cpuBmp, $script:CpuTempHist.ToArray(), $script:CpuFreqHist.ToArray(), $cCnt,
             $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $cInfo,
             'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz', $script:CpuHover)
