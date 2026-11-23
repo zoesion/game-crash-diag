@@ -439,7 +439,7 @@ $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
 # ── 按钮 ──
-function New-Button($x, $text, $w = 130) {
+function New-Button($x, $text, $w = 135) {
     $b = New-Object System.Windows.Forms.Button
     $b.Text = $text
     $b.Location = New-Object System.Drawing.Point($x, 536)
@@ -460,9 +460,66 @@ function New-Button($x, $text, $w = 130) {
 }
 
 $btnStart = New-Button 20  '开始记录'
-$btnStop  = New-Button 160 '停止'
-$btnLogs  = New-Button 290 '打开数据目录'
-$btnRep   = New-Button 430 '打开崩溃报告'
+$btnStop  = New-Button 165 '停止'
+$btnLogs  = New-Button 310 '打开数据目录'
+$btnRep   = New-Button 455 '打开崩溃报告'
+
+# ── 右下角：开机自启 ──
+$script:RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$script:RunName = 'BF6Monitor'
+$script:AutoStartInit = $false
+
+$chkAutoStart = New-Object System.Windows.Forms.CheckBox
+$chkAutoStart.Text = '开机自动启动'
+$chkAutoStart.Font = $FontBody
+$chkAutoStart.ForeColor = $C.Dim
+$chkAutoStart.AutoSize = $true
+$chkAutoStart.Cursor = [System.Windows.Forms.Cursors]::Hand
+$chkAutoStart.Location = New-Object System.Drawing.Point(604, 539)
+$form.Controls.Add($chkAutoStart)
+
+$lblMem = New-Object System.Windows.Forms.Label
+$lblMem.Text = '程序内存 -- MB'
+$lblMem.Font = $FontVer
+$lblMem.ForeColor = [System.Drawing.Color]::FromArgb(110, 110, 120)
+$lblMem.AutoSize = $true
+$lblMem.Location = New-Object System.Drawing.Point(606, 561)
+$form.Controls.Add($lblMem)
+
+$chkAutoStart.Add_CheckedChanged({
+    if (-not $script:AutoStartInit) { return }
+    $ok = Set-AutoStart $chkAutoStart.Checked
+    if (-not $ok) {
+        $lblHint.Text = '设置失败：无法写入注册表启动项。'
+        return
+    }
+    if ($chkAutoStart.Checked) {
+        $lblHint.Text = '已设置开机自动启动，开机后会在后台自动开始记录。'
+    }
+    else {
+        $lblHint.Text = '已取消开机自动启动。'
+    }
+})
+function Test-AutoStart {
+    $v = (Get-ItemProperty -Path $script:RunKey -Name $script:RunName -ErrorAction SilentlyContinue).$($script:RunName)
+    return -not [string]::IsNullOrWhiteSpace($v)
+}
+
+function Set-AutoStart([bool]$enable) {
+    try {
+        if ($enable) {
+            $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            $appPath = Join-Path $Root 'BF6Monitor.ps1'
+            $cmd = "`"$psExe`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$appPath`" -Minimized -IntervalMs 500"
+            New-ItemProperty -Path $script:RunKey -Name $script:RunName -Value $cmd -PropertyType String -Force | Out-Null
+        }
+        else {
+            Remove-ItemProperty -Path $script:RunKey -Name $script:RunName -ErrorAction SilentlyContinue
+        }
+        return $true
+    }
+    catch { return $false }
+}
 
 $lblHint = New-Object System.Windows.Forms.Label
 $lblHint.Text = '提示：游戏启动自动记录，退出/崩溃自动生成报告；鼠标移到曲线上可查看该点数值。'
@@ -473,7 +530,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.1   数据目录: $Root"
+$lblVer.Text = "v2.2   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -725,7 +782,7 @@ function Update-UI {
         '^P[4-9]$' { "$($s.PState) 待机" }
         default { "$($s.PState)" }
     }
-    $lblDetail.Text = "显存 {0:N0} / {1} MB      内存 {2}      降频 {3}      性能档 {4}" -f `
+    $lblDetail.Text = "显存 {0:N0} / {1} MB      系统内存 {2}      降频 {3}      性能档 {4}" -f `
         $s.MemUsed, $memTotal, $ramTxt, $s.Throttle, $pstateTxt
 
     # 记录
@@ -812,6 +869,11 @@ function Update-UI {
             }
         }
     }
+
+    try {
+        $ws = [System.Diagnostics.Process]::GetCurrentProcess().WorkingSet64 / 1MB
+        $lblMem.Text = "程序内存 {0:N0} MB" -f $ws
+    } catch {}
 
     if ($script:BtnRestore -and (Get-Date) -ge $script:BtnRestore.At) {
         $script:BtnRestore.Btn.Text = $script:BtnRestore.Text
@@ -938,6 +1000,10 @@ $script:Timer.Add_Tick({ try { Update-UI } catch { $lblStatus.Text = '✕ 错误
 
 $form.Add_Shown({
     $script:Timer.Start()
+    try {
+        $chkAutoStart.Checked = Test-AutoStart
+        $script:AutoStartInit = $true
+    } catch { $script:AutoStartInit = $true }
     $hasGame = $null -ne (Get-Process bf6 -ErrorAction SilentlyContinue)
     if (-not $hasGame -and -not $script:Recording) {
         Start-Logging 'system'

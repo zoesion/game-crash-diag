@@ -1,4 +1,4 @@
-# BF6监控器
+﻿# BF6监控器
 
 > 战地6 运行时 GPU / CPU 实时监控与崩溃取证工具 —— 专治 `DXGI_ERROR_DEVICE_HUNG` 这类 DX 报错。
 
@@ -236,7 +236,9 @@ BF6Monitor.ps1 -Shot out.png       # 离屏截图
 程序必须开着才有效。没开的话只能用 `tools\collect-forensics.ps1` 事后捞事件日志（没有秒级遥测）。
 
 **Q: 怎么开机自启**
-把桌面快捷方式拖进 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`。
+勾选主界面右下角的「开机自动启动」即可，会写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，
+开机后自动最小化运行并开始记录。取消勾选就移除。
+（不需要手动往启动文件夹拖快捷方式了）
 
 ---
 
