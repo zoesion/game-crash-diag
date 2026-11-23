@@ -149,44 +149,74 @@ try {
     if ($c0 -and $c0.MaxClockSpeed) { $script:CpuMaxMHz = [int]$c0.MaxClockSpeed }
 } catch {}
 
+# ── CPU 采样：全部走 .NET 性能计数器（单次 <1ms，不再阻塞界面）──
+$script:PcPerf = New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Performance', '_Total')
+$script:PcTime = New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Time', '_Total')
+$script:PcMem  = New-Object System.Diagnostics.PerformanceCounter('Memory', 'Available MBytes')
+$script:PcCores = @()
+try {
+    $catNames = (New-Object System.Diagnostics.PerformanceCounterCategory('Processor Information')).GetInstanceNames()
+    foreach ($n in $catNames) {
+        if ($n -ne '_Total') {
+            $script:PcCores += New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Time', $n)
+        }
+    }
+} catch {}
+$script:RamTotalMB = 0
+try {
+    $script:RamTotalMB = [int]((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
+} catch {}
+# 预热：性能计数器第一次 NextValue 返回 0
+try { $null = $script:PcPerf.NextValue(); $null = $script:PcTime.NextValue(); $null = $script:PcMem.NextValue()
+      foreach ($c0 in $script:PcCores) { $null = $c0.NextValue() } } catch {}
+$script:CpuTempCache = $null
+$script:CpuTempCacheAt = $null
+
 function Get-CpuSample {
     $s = @{ Temp = $null; MHz = $null; Load = $null; Active = $null; Total = $null; RamPct = $null }
-    # 温度：ACPI 热区（不需要管理员）
+
+    # 频率 / 占用（性能计数器，~1ms）
     try {
-        $tz = Get-CimInstance -ClassName Win32_PerfFormattedData_Counters_ThermalZoneInformation -ErrorAction Stop |
-              Sort-Object { $_.HighPrecisionTemperature } -Descending | Select-Object -First 1
-        if ($tz -and $tz.HighPrecisionTemperature -gt 2732) {
-            $s.Temp = [math]::Round(($tz.HighPrecisionTemperature / 10) - 273.15, 1)
-        }
-    } catch {}
-    # 频率：性能计数器 × 标称频率
-    try {
-        $perf = (Get-Counter '\Processor Information(_Total)\% Processor Performance' -ErrorAction Stop).CounterSamples[0].CookedValue
+        $perf = $script:PcPerf.NextValue()
         if ($perf -gt 0) { $s.MHz = [int][math]::Round($script:CpuMaxMHz * $perf / 100) }
+        $t = $script:PcTime.NextValue()
+        if ($t -ge 0) { $s.Load = [int][math]::Round($t) }
     } catch {}
-    # 占用率
+
+    # 逐核活跃数（~7ms）
     try {
-        $w = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1
-        if ($w) { $s.Load = [int]$w.LoadPercentage }
-    } catch {}
-    # 活跃核心（单核占用 > 20% 记为活跃）
-    try {
-        $cores = @(Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -ErrorAction Stop | Where-Object { $_.Name -ne '_Total' })
-        if ($cores.Count -gt 0) {
-            $s.Total = $cores.Count
-            $s.Active = @($cores | Where-Object { $_.PercentProcessorTime -gt 20 }).Count
+        if ($script:PcCores.Count -gt 0) {
+            $active = 0
+            foreach ($cc in $script:PcCores) { if ($cc.NextValue() -gt 20) { $active++ } }
+            $s.Total = $script:PcCores.Count
+            $s.Active = $active
         }
     } catch {}
-    # 内存占用
+
+    # 内存
     try {
-        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-        if ($os.TotalVisibleMemorySize -gt 0) {
-            $s.RamPct = [int][math]::Round((1 - ($os.FreePhysicalMemory / $os.TotalVisibleMemorySize)) * 100, 0)
+        $avail = $script:PcMem.NextValue()
+        if ($script:RamTotalMB -gt 0 -and $avail -gt 0) {
+            $s.RamPct = [int][math]::Round((1 - ($avail / $script:RamTotalMB)) * 100)
         }
     } catch {}
+
+    # 温度：热区查询 30ms，缓存 10 秒
+    $now = Get-Date
+    if (-not $script:CpuTempCacheAt -or ($now - $script:CpuTempCacheAt).TotalSeconds -ge 10) {
+        try {
+            $tz = Get-CimInstance -ClassName Win32_PerfFormattedData_Counters_ThermalZoneInformation -ErrorAction Stop |
+                  Sort-Object { $_.HighPrecisionTemperature } -Descending | Select-Object -First 1
+            if ($tz -and $tz.HighPrecisionTemperature -gt 2732) {
+                $script:CpuTempCache = [math]::Round(($tz.HighPrecisionTemperature / 10) - 273.15, 1)
+            }
+        } catch {}
+        $script:CpuTempCacheAt = $now
+    }
+    $s.Temp = $script:CpuTempCache
+
     [pscustomobject]$s
 }
-
 # ════════════════════════════════ 自检模式 ════════════════════════════════
 if ($SelfTest) {
     $info = Get-GpuInfo
@@ -421,20 +451,10 @@ function New-Button($x, $text, $w = 130) {
     $b.ForeColor = $C.Text
     $b.Font = $FontUI
     $b.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(52, 52, 62)
-    $b.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(70, 70, 84)
-    $b.Add_MouseEnter({
-        param($s, $e)
-        if ($s.Enabled) {
-            $s.BackColor = [System.Drawing.Color]::FromArgb(52, 52, 62)
-            $s.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(86, 86, 102)
-        }
-    })
-    $b.Add_MouseLeave({
-        param($s, $e)
-        $s.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
-        $s.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(48, 48, 56)
-    })
+    # 悬停/按下高亮交给 WinForms 原生处理（不依赖鼠标事件，不会失灵）
+    $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(56, 56, 68)
+    $b.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(74, 74, 90)
+    $b.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
     $form.Controls.Add($b)
     $b
 }
@@ -453,7 +473,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.0   数据目录: $Root"
+$lblVer.Text = "v2.1   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -664,7 +684,7 @@ function Update-UI {
 
     # CPU 每 4 个 tick 采一次（默认 500ms → 约 2 秒）
     $script:Tick++
-    if (-not $script:CpuLast -or ($script:Tick % 4) -eq 1) { $script:CpuLast = Get-CpuSample }
+    if (-not $script:CpuLast -or ($script:Tick % 2) -eq 1) { $script:CpuLast = Get-CpuSample }
     $cpu = $script:CpuLast
     if ($null -ne $cpu.Temp) { $script:LastCpuTemp = [double]$cpu.Temp }
     if ($null -ne $cpu.MHz)  { $script:LastCpuFreq = [double]$cpu.MHz }
@@ -861,7 +881,7 @@ function Show-HoverTip([string]$which, $ctrl, [int]$x, [int]$y = 10) {
 
     # 重绘节流，避免鼠标激动时卡顿
     $nowTick = [Environment]::TickCount
-    if (($nowTick - $script:LastHoverMs) -ge 60) {
+    if (($nowTick - $script:LastHoverMs) -ge 100) {
         $script:LastHoverMs = $nowTick
         Draw-Chart
     }
