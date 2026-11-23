@@ -439,7 +439,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v1.6   数据目录: $Root"
+$lblVer.Text = "v1.7   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -476,7 +476,7 @@ function Start-Logging([string]$Category = 'system') {
     $prefix = if ($Category -eq 'bf6') { 'bf6' } else { 'sys' }
     $script:LogCategory = $Category
     $script:LogFile = Join-Path $sub "$prefix-$stamp.csv"
-    $hdr = 'time,temp_c,power_w,clock_sm_mhz,clock_mem_mhz,util_gpu_pct,util_mem_pct,mem_used_mb,pstate,event_reason,power_cap,hw_slowdown,thermal_throttle,throttle_text,cpu_temp_c,cpu_mhz,cpu_load_pct,cpu_cores_active,cpu_cores_total,ram_pct'
+    $hdr = '日期,时间,GPU温度(°C),GPU功耗(W),GPU核心频率(MHz),GPU显存频率(MHz),GPU占用(%),显存占用(%),显存已用(MB),电源状态,降频原因码,功耗墙,硬件降频,温度墙,降频说明,CPU温度(°C),CPU频率(MHz),CPU占用(%),活跃核心数,总核心数,内存占用(%)'
     Set-Content -Path $script:LogFile -Value $hdr -Encoding UTF8
     $script:LogCount = 0
     $script:Recording = $true
@@ -694,19 +694,27 @@ function Update-UI {
 
     # 记录
     if ($script:Recording) {
-        $line = '{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12}' -f `
-            $s.Time.ToString('yyyy-MM-dd HH:mm:ss.fff'), $s.Temp, $s.Power, $s.ClockSm, $s.ClockMem,
-            $s.UtilGpu, $s.UtilMem, $s.MemUsed, $s.PState, $s.Reason,
-            $(if ($s.Throttle -match '功耗墙') { 1 } else { 0 }),
-            $(if ($s.Throttle -match '硬件降频') { 1 } else { 0 }),
-            $(if ($s.Throttle -match '温度墙') { 1 } else { 0 })
         $cpuT = if ($null -ne $cpu.Temp) { $cpu.Temp } else { '' }
         $cpuM = if ($null -ne $cpu.MHz) { $cpu.MHz } else { '' }
         $cpuL = if ($null -ne $cpu.Load) { $cpu.Load } else { '' }
         $cpuA = if ($null -ne $cpu.Active) { $cpu.Active } else { '' }
         $cpuN = if ($null -ne $cpu.Total) { $cpu.Total } else { '' }
         $ramP = if ($null -ne $cpu.RamPct) { $cpu.RamPct } else { '' }
-        Add-Content -Path $script:LogFile -Value ($line + ',' + $s.Throttle + ',' + $cpuT + ',' + $cpuM + ',' + $cpuL + ',' + $cpuA + ',' + $cpuN + ',' + $ramP) -Encoding UTF8
+
+        # 日期与时间分开，Excel/WPS 打开才能正确识别
+        $row = @(
+            $s.Time.ToString('yyyy-MM-dd'),
+            $s.Time.ToString('HH:mm:ss'),
+            $s.Temp, $s.Power, $s.ClockSm, $s.ClockMem,
+            $s.UtilGpu, $s.UtilMem, $s.MemUsed,
+            $s.PState, $s.Reason,
+            $(if ($s.Throttle -match '功耗墙') { 1 } else { 0 }),
+            $(if ($s.Throttle -match '硬件降频') { 1 } else { 0 }),
+            $(if ($s.Throttle -match '温度墙') { 1 } else { 0 }),
+            $s.Throttle,
+            $cpuT, $cpuM, $cpuL, $cpuA, $cpuN, $ramP
+        ) -join ','
+        Add-Content -Path $script:LogFile -Value $row -Encoding UTF8
         $script:LogCount++
     }
 

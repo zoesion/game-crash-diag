@@ -137,14 +137,16 @@ BF6Monitor\
 
 ### CSV 字段
 
+表头是中文的，Excel / WPS 直接打开即可：
+
 ```
-time, temp_c, power_w, clock_sm_mhz, clock_mem_mhz, util_gpu_pct, util_mem_pct,
-mem_used_mb, pstate, event_reason, power_cap, hw_slowdown, thermal_throttle,
-throttle_text, cpu_temp_c, cpu_mhz, cpu_load_pct, cpu_cores_active,
-cpu_cores_total, ram_pct
+日期, 时间, GPU温度(°C), GPU功耗(W), GPU核心频率(MHz), GPU显存频率(MHz),
+GPU占用(%), 显存占用(%), 显存已用(MB), 电源状态, 降频原因码,
+功耗墙, 硬件降频, 温度墙, 降频说明,
+CPU温度(°C), CPU频率(MHz), CPU占用(%), 活跃核心数, 总核心数, 内存占用(%)
 ```
 
-Excel 直接打开即可。
+`日期` 和 `时间` 分开两列，时间格式 `时:分:秒`，避免 Excel 把整串日期时间识别成奇怪的时间值。
 
 ---
 
