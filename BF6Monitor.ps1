@@ -421,6 +421,20 @@ function New-Button($x, $text, $w = 130) {
     $b.ForeColor = $C.Text
     $b.Font = $FontUI
     $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(52, 52, 62)
+    $b.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(70, 70, 84)
+    $b.Add_MouseEnter({
+        param($s, $e)
+        if ($s.Enabled) {
+            $s.BackColor = [System.Drawing.Color]::FromArgb(52, 52, 62)
+            $s.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(86, 86, 102)
+        }
+    })
+    $b.Add_MouseLeave({
+        param($s, $e)
+        $s.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+        $s.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(48, 48, 56)
+    })
     $form.Controls.Add($b)
     $b
 }
@@ -439,7 +453,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v1.9   数据目录: $Root"
+$lblVer.Text = "v2.0   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -464,6 +478,7 @@ $script:CpuLast    = $null
 $script:GpuHover   = -1
 $script:CpuHover   = -1
 $script:LastHoverMs = 0
+$script:BtnRestore = $null
 $script:CpuTempHist = New-Object 'System.Collections.Generic.List[double]'
 $script:CpuFreqHist = New-Object 'System.Collections.Generic.List[double]'
 $script:LastCpuTemp = 0.0
@@ -476,7 +491,7 @@ function Start-Logging([string]$Category = 'system') {
     $prefix = if ($Category -eq 'bf6') { 'bf6' } else { 'sys' }
     $script:LogCategory = $Category
     $script:LogFile = Join-Path $sub "$prefix-$stamp.csv"
-    $hdr = '日期,时间,GPU温度(°C),GPU功耗(W),GPU核心频率(MHz),GPU显存频率(MHz),GPU占用(%),显存占用(%),显存已用(MB),电源状态,降频原因码,功耗墙,硬件降频,温度墙,降频说明,CPU温度(°C),CPU频率(MHz),CPU占用(%),活跃核心数,总核心数,内存占用(%)'
+    $hdr = '时间,GPU温度(°C),GPU功耗(W),GPU核心频率(MHz),GPU显存频率(MHz),GPU占用(%),显存占用(%),显存已用(MB),电源状态,降频原因码,功耗墙,硬件降频,温度墙,降频说明,CPU温度(°C),CPU频率(MHz),CPU占用(%),活跃核心数,总核心数,内存占用(%)'
     Set-Content -Path $script:LogFile -Value $hdr -Encoding UTF8
     $script:LogCount = 0
     $script:Recording = $true
@@ -704,7 +719,6 @@ function Update-UI {
 
         # 日期与时间分开，Excel/WPS 打开才能正确识别
         $row = @(
-            $s.Time.ToString('yyyy-MM-dd'),
             $s.Time.ToString('HH:mm:ss'),
             $s.Temp, $s.Power, $s.ClockSm, $s.ClockMem,
             $s.UtilGpu, $s.UtilMem, $s.MemUsed,
@@ -777,6 +791,12 @@ function Update-UI {
                 $lblHint.Text = "$($lblHint.Text)  已切回系统监控 logs\system\"
             }
         }
+    }
+
+    if ($script:BtnRestore -and (Get-Date) -ge $script:BtnRestore.At) {
+        $script:BtnRestore.Btn.Text = $script:BtnRestore.Text
+        $script:BtnRestore.Btn.Enabled = $true
+        $script:BtnRestore = $null
     }
 
     $lblStats.Text = "已记录 {0:N0} 条    报告 {1} 份    文件 {2}" -f `
@@ -870,8 +890,25 @@ $btnStart.Add_Click({
 $btnStop.Add_Click({
     if ($script:Recording) { Stop-Logging; $lblHint.Text = '已停止记录。' }
 })
-$btnLogs.Add_Click({ Start-Process explorer.exe $LogDir })
-$btnRep.Add_Click({ Start-Process explorer.exe $RepDir })
+function Open-FolderWithFeedback($btn, $normalText, $path) {
+    $btn.Text = '打开中…'
+    $btn.Enabled = $false
+    $btn.Refresh()
+    [System.Windows.Forms.Application]::DoEvents()
+    try {
+        if (-not (Test-Path $path)) { New-Item -ItemType Directory -Force -Path $path | Out-Null }
+        Start-Process -FilePath 'explorer.exe' -ArgumentList "`"$path`""
+    } catch {}
+    $script:BtnRestore = @{ Btn = $btn; Text = $normalText; At = (Get-Date).AddMilliseconds(900) }
+}
+
+$btnLogs.Add_Click({
+    $cat = if (Get-Process bf6 -ErrorAction SilentlyContinue) { 'bf6' } else { 'system' }
+    $target = Join-Path $LogDir $cat
+    if (-not (Test-Path $target)) { $target = $LogDir }
+    Open-FolderWithFeedback $btnLogs '打开数据目录' $target
+})
+$btnRep.Add_Click({ Open-FolderWithFeedback $btnRep '打开崩溃报告' $RepDir })
 
 $btnStop.Enabled = $false
 
