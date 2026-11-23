@@ -20,6 +20,7 @@ param(
     [int]$FillPoints = 0,
     [switch]$Minimized,
     [switch]$Tray,
+    [int]$ShowAfter = 0,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -534,7 +535,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v2.4   数据目录: $Root"
+$lblVer.Text = "v2.5   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(20, 618)
@@ -1144,12 +1145,19 @@ $miExit = $trayMenu.Items.Add('退出')
 $trayIcon.ContextMenuStrip = $trayMenu
 
 function Show-MainWindow {
-    $form.ShowInTaskbar = $true
-    $form.Show()
-    $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal
-    $form.CenterToScreen()
-    $form.Activate()
-    $form.BringToFront()
+    try {
+        $form.ShowInTaskbar = $true
+        $form.Show()
+        $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal
+        # 手动居中（Form 没有 CenterToScreen 方法）
+        $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+        $form.StartPosition = 'Manual'
+        $form.Location = New-Object System.Drawing.Point(
+            [int](($wa.Width - $form.Width) / 2 + $wa.X),
+            [int](($wa.Height - $form.Height) / 2 + $wa.Y))
+        $form.Activate()
+        $form.BringToFront()
+    } catch {}
 }
 
 $miShow.Add_Click({ Show-MainWindow })
@@ -1166,6 +1174,17 @@ $miExit.Add_Click({
     $form.Close()
 })
 $trayIcon.Add_DoubleClick({ Show-MainWindow })
+
+# 测试钩子：-ShowAfter N 启动 N 秒后模拟托盘唤出
+if ($ShowAfter -gt 0) {
+    $script:ShowTimer = New-Object System.Windows.Forms.Timer
+    $script:ShowTimer.Interval = $ShowAfter * 1000
+    $script:ShowTimer.Add_Tick({
+        $script:ShowTimer.Stop()
+        Show-MainWindow
+    })
+    $script:ShowTimer.Start()
+}
 $trayIcon.Add_MouseClick({
     param($s, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Show-MainWindow }
