@@ -1,0 +1,124 @@
+// BF6 监控器 —— 曲线绘制核心（编译成 .NET 类型，避免 PowerShell 逐点解释的开销）
+// 由 BF6Monitor.ps1 通过 Add-Type 加载
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+
+public static class ChartRenderer
+{
+    public static int LastPointCount = 0;
+
+    /// <summary>
+    /// 通用双曲线渲染：主曲线 colorA（按 unitA 刻度）+ 副曲线 colorB（按 unitB 刻度）
+    /// 左上角画彩色图例，右上角画缓存/跨度信息
+    /// </summary>
+    public static void Render(Bitmap bmp, double[] a, double[] b, int count,
+                              Color card, Color grid, Color colorA, Color colorB, Color dim,
+                              string info, string labelA, string labelB, string unitA, string unitB)
+    {
+        using (Graphics g = Graphics.FromImage(bmp))
+        using (Pen penGrid = new Pen(grid, 1f))
+        using (SolidBrush brushDim = new SolidBrush(dim))
+        using (SolidBrush brushA = new SolidBrush(colorA))
+        using (SolidBrush brushB = new SolidBrush(colorB))
+        using (Font font = new Font("Microsoft YaHei", 8f))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            g.Clear(card);
+
+            int w = bmp.Width, h = bmp.Height;
+
+            // 网格
+            for (int i = 1; i < 4; i++)
+            {
+                int y = h * i / 4;
+                g.DrawLine(penGrid, 0, y, w, y);
+            }
+
+            // 图例（左上）
+            float lx = 8f;
+            g.FillRectangle(brushA, lx, 9f, 9f, 9f);
+            g.DrawString(labelA, font, brushA, lx + 13f, 5f);
+            lx += 13f + g.MeasureString(labelA, font).Width + 14f;
+            g.FillRectangle(brushB, lx, 9f, 9f, 9f);
+            g.DrawString(labelB, font, brushB, lx + 13f, 5f);
+
+            // 信息（右上）
+            if (!string.IsNullOrEmpty(info))
+            {
+                SizeF sz = g.MeasureString(info, font);
+                g.DrawString(info, font, brushDim, w - sz.Width - 8f, 5f);
+            }
+
+            if (count < 2)
+            {
+                g.DrawString("等待数据...", font, brushDim, 8f, h / 2f - 8f);
+                LastPointCount = 0;
+                return;
+            }
+
+            // 降采样到最多 720 点
+            int stride = Math.Max(1, (int)Math.Ceiling(count / 720.0));
+            List<int> idx = new List<int>();
+            for (int i = 0; i < count; i += stride) idx.Add(i);
+            if (idx[idx.Count - 1] != count - 1) idx.Add(count - 1);
+            int n = idx.Count;
+            LastPointCount = n;
+
+            double maxA = double.MinValue, minA = double.MaxValue;
+            double maxB = double.MinValue, minB = double.MaxValue;
+            for (int k = 0; k < n; k++)
+            {
+                double va = a[idx[k]];
+                double vb = b[idx[k]];
+                if (va > maxA) maxA = va;
+                if (va < minA) minA = va;
+                if (vb > maxB) maxB = vb;
+                if (vb < minB) minB = vb;
+            }
+
+            // 主曲线刻度
+            double spanA = maxA - minA;
+            if (spanA < 1e-6) { maxA = minA + 1; spanA = 1; }
+            double padA = spanA * 0.15;
+            double loA = minA - padA, hiA = maxA + padA;
+
+            // 副曲线刻度
+            double spanB = maxB - minB;
+            if (spanB < 1e-6) { maxB = minB + 1; spanB = 1; }
+            double padB = spanB * 0.15;
+            double loB = Math.Max(0, minB - padB), hiB = maxB + padB;
+            if (hiB - loB < 1e-6) hiB = loB + 1;
+
+            PointF[] ptsA = new PointF[n];
+            PointF[] ptsB = new PointF[n];
+            double spanX = (count - 1);
+            for (int k = 0; k < n; k++)
+            {
+                int i = idx[k];
+                float x = (float)(w * (i / spanX));
+                double yA = h - 12 - ((a[i] - loA) / (hiA - loA)) * (h - 32);
+                double yB = h - 12 - ((b[i] - loB) / (hiB - loB)) * (h - 32);
+                ptsA[k] = new PointF(x, (float)yA);
+                ptsB[k] = new PointF(x, (float)yB);
+            }
+
+            using (Pen penB = new Pen(Color.FromArgb(140, colorB), 1.3f))
+            using (Pen penA = new Pen(colorA, 1.8f))
+            {
+                if (n >= 2)
+                {
+                    g.DrawLines(penB, ptsB);
+                    g.DrawLines(penA, ptsA);
+                }
+            }
+
+            // 右侧刻度
+            g.DrawString(string.Format("{0:N0}{1}", maxA, unitA), font, brushDim, w - 56f, 22f);
+            g.DrawString(string.Format("{0:N0}{1}", minA, unitA), font, brushDim, w - 56f, h - 20f);
+            g.DrawString(string.Format("{0:N0}{1}", maxB, unitB), font, brushB, w - 128f, 22f);
+        }
+    }
+}

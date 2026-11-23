@@ -1,0 +1,117 @@
+﻿<#
+.SYNOPSIS
+    BF6监控器 安装脚本
+
+.DESCRIPTION
+    把程序安装到当前用户目录（不需要管理员权限），并创建快捷方式和卸载入口。
+    安装位置：%LOCALAPPDATA%\Programs\BF6Monitor
+#>
+[CmdletBinding()]
+param(
+    [string]$InstallDir = '',
+    [switch]$Silent
+)
+
+$ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+    $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\BF6Monitor'
+}
+$src = $PSScriptRoot
+
+# 已经装过就先停掉正在跑的实例
+try {
+    $selfPid = $PID
+    $parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction SilentlyContinue).ParentProcessId
+    Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match 'BF6Monitor\.ps1' -and $_.ProcessId -ne $selfPid -and $_.ProcessId -ne $parentPid } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+} catch {}
+
+Write-Host ''
+Write-Host '  ============================================' -ForegroundColor Cyan
+Write-Host '   BF6监控器  安装' -ForegroundColor Cyan
+Write-Host '  ============================================' -ForegroundColor Cyan
+Write-Host ''
+
+# ── 1. 复制文件 ──
+Write-Host '  [1/4] 复制程序文件...' -ForegroundColor Yellow
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+foreach ($sub in 'logs','reports','backup') {
+    New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir $sub) | Out-Null
+}
+$files = @('BF6Monitor.ps1','ChartRenderer.cs','启动监控器.vbs','调试启动.cmd','app.ico','README.md')
+foreach ($f in $files) {
+    $p = Join-Path $src $f
+    if (Test-Path $p) { Copy-Item $p $InstallDir -Force }
+}
+$toolSrc = Join-Path $src 'tools'
+if (Test-Path $toolSrc) {
+    Copy-Item $toolSrc (Join-Path $InstallDir 'tools') -Recurse -Force
+}
+# 卸载脚本也带一份
+Copy-Item (Join-Path $src 'install.ps1') $InstallDir -Force -ErrorAction SilentlyContinue
+if (Test-Path (Join-Path $src 'uninstall.ps1')) { Copy-Item (Join-Path $src 'uninstall.ps1') $InstallDir -Force }
+Write-Host "        -> $InstallDir" -ForegroundColor Green
+
+# ── 2. 快捷方式 ──
+Write-Host '  [2/4] 创建快捷方式...' -ForegroundColor Yellow
+$ws = New-Object -ComObject WScript.Shell
+$wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
+$vbs = Join-Path $InstallDir '启动监控器.vbs'
+$icon = Join-Path $InstallDir 'app.ico'
+
+function New-Shortcut($lnkPath, $target, $arguments, $workdir, $iconPath, $desc) {
+    $s = $ws.CreateShortcut($lnkPath)
+    $s.TargetPath = $target
+    $s.Arguments = $arguments
+    $s.WorkingDirectory = $workdir
+    if (Test-Path $iconPath) { $s.IconLocation = "$iconPath,0" }
+    $s.Description = $desc
+    $s.Save()
+}
+
+$desktop = [Environment]::GetFolderPath('Desktop')
+New-Shortcut (Join-Path $desktop 'BF6监控器.lnk') $wscript "`"$vbs`"" $InstallDir $icon '战地6 GPU/CPU 监控与崩溃取证'
+
+$startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) 'BF6监控器'
+New-Item -ItemType Directory -Force -Path $startMenu | Out-Null
+New-Shortcut (Join-Path $startMenu 'BF6监控器.lnk') $wscript "`"$vbs`"" $InstallDir $icon '战地6 GPU/CPU 监控与崩溃取证'
+New-Shortcut (Join-Path $startMenu '卸载 BF6监控器.lnk') 'powershell.exe' `
+    "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'uninstall.ps1')`"" $InstallDir $icon '卸载 BF6监控器'
+Write-Host '        -> 桌面 + 开始菜单' -ForegroundColor Green
+
+# ── 3. 卸载信息 ──
+Write-Host '  [3/4] 注册卸载入口...' -ForegroundColor Yellow
+$regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BF6Monitor'
+New-Item -Path $regPath -Force | Out-Null
+$size = (Get-ChildItem $InstallDir -Recurse -File | Measure-Object Length -Sum).Sum
+$props = @{
+    DisplayName     = 'BF6监控器'
+    DisplayVersion  = '1.1'
+    Publisher       = '本地工具'
+    InstallLocation = $InstallDir
+    DisplayIcon     = $icon
+    UninstallString = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'uninstall.ps1')`""
+    NoModify        = 1
+    NoRepair        = 1
+}
+foreach ($k in $props.Keys) { New-ItemProperty -Path $regPath -Name $k -Value $props[$k] -PropertyType String -Force | Out-Null }
+New-ItemProperty -Path $regPath -Name 'EstimatedSize' -Value ([int]($size / 1KB)) -PropertyType DWord -Force | Out-Null
+Write-Host '        -> 控制面板可见' -ForegroundColor Green
+
+# ── 4. 完成 ──
+Write-Host '  [4/4] 完成' -ForegroundColor Yellow
+Write-Host ''
+Write-Host '  安装完成！' -ForegroundColor Green
+Write-Host "  位置: $InstallDir" -ForegroundColor Gray
+Write-Host '  桌面和开始菜单都有快捷方式了。' -ForegroundColor Gray
+Write-Host ''
+
+if (-not $Silent) {
+    $ans = Read-Host '  现在启动吗？(Y/n)'
+    if ($ans -eq '' -or $ans -match '^[Yy]') {
+        Start-Process $wscript -ArgumentList "`"$vbs`""
+        Write-Host '  已启动。' -ForegroundColor Green
+    }
+}
