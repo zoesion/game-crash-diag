@@ -329,7 +329,7 @@ $FontBig   = New-Object System.Drawing.Font('Consolas', 25, [System.Drawing.Font
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = '游戏崩溃诊断器'
-$form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
+$form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
 $form.Size = New-Object System.Drawing.Size(760, 734)
 $form.MinimumSize = New-Object System.Drawing.Size(680, 660)
@@ -603,18 +603,18 @@ $lblDx.Text = 'DirectX 运行库：检查中…'
 $lblDx.Font = $FontSmall
 $lblDx.ForeColor = $C.Dim
 $lblDx.Location = New-Object System.Drawing.Point(6, 606)
-$lblDx.Size = New-Object System.Drawing.Size(560, 20)
+$lblDx.Size = New-Object System.Drawing.Size(540, 20)
 $form.Controls.Add($lblDx)
 
 $btnDxFix = New-Object System.Windows.Forms.Button
 $btnDxFix.Text = '检查 DirectX'
-$btnDxFix.Size = New-Object System.Drawing.Size(150, 28)
-$btnDxFix.Location = New-Object System.Drawing.Point(598, 602)
+$btnDxFix.Size = New-Object System.Drawing.Size(170, 30)
+$btnDxFix.Location = New-Object System.Drawing.Point(560, 602)
 $btnDxFix.FlatStyle = 'Flat'
 $btnDxFix.Font = $FontSmall
-$btnDxFix.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
-$btnDxFix.ForeColor = $C.Dim
-$btnDxFix.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+$btnDxFix.BackColor = [System.Drawing.Color]::FromArgb(48, 48, 58)
+$btnDxFix.ForeColor = $C.Text
+$btnDxFix.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(96, 96, 116)
 $btnDxFix.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(46, 46, 54)
 $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
@@ -1286,7 +1286,11 @@ try {
 
     # 左侧文字
     foreach ($l in @($lblTitle, $lblSub, $lblCpuModel, $lblDetail, $lblStats, $lblHint, $lblDx, $lblVer)) {
-        if ($l) { $l.Left = $M; $l.Width = $inner }
+        if ($l) { $l.Left = $M }
+    }
+    $lblDx.Width = [int](540 * $script:DpiScale)
+    $btnDxFix.Left = [int](560 * $script:DpiScale)
+    if ($false) {
     }
 
     # 右侧控件贴右边
@@ -1494,7 +1498,7 @@ function Update-DxIndicator {
         $lblDx.Text = 'DirectX 运行库：12 项组件齐全，不需要修复'
         $lblDx.ForeColor = $C.Accent
         $btnDxFix.Text = '查看 / 重装'
-        $btnDxFix.ForeColor = $C.Dim
+        $btnDxFix.ForeColor = $C.Text
     }
     else {
         $names = ($dx.Missing | ForEach-Object { $_.Name }) -join '、'
