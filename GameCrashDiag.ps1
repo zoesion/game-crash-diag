@@ -55,6 +55,30 @@ if (Test-Path $csPath) {
 }
 
 $Root    = Split-Path -Parent $PSCommandPath
+# ── 多语言 ──
+$script:SettingsDir  = Join-Path $env:LOCALAPPDATA 'GameCrashDiag'
+$script:SettingsFile = Join-Path $script:SettingsDir 'settings.json'
+$script:LangCode = 'zh-CN'
+try {
+    if (Test-Path $script:SettingsFile) {
+        $st = Get-Content $script:SettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($st.Language) { $script:LangCode = $st.Language }
+    }
+} catch { }
+if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
+$script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
+$script:AppVersion = 'v5.62'
+$script:BuildDate  = '2026-11-25'
+
+function Set-Language([string]$code) {
+    try {
+        if (-not (Test-Path $script:SettingsDir)) { New-Item -ItemType Directory -Force -Path $script:SettingsDir | Out-Null }
+        $obj = @{ Language = $code; UpdatedAt = (Get-Date).ToString('s') } | ConvertTo-Json
+        Set-Content -Path $script:SettingsFile -Value $obj -Encoding UTF8
+        return $true
+    } catch { return $false }
+}
+
 $LogDir  = Join-Path $Root 'logs'
 $RepDir  = Join-Path $Root 'reports'
 foreach ($d in @($LogDir, $RepDir)) {
@@ -103,7 +127,7 @@ function Get-GpuSample {
         MemTotal = Convert-Number $p[7]
         PState   = "$($p[8])".Trim()
         Reason   = "$($p[9])".Trim()
-        Throttle = if ($throttle.Count) { $throttle -join ' + ' } else { '正常' }
+        Throttle = if ($throttle.Count) { $throttle -join ' + ' } else { $script:T.ThrottleNone }
     }
 }
 
@@ -331,7 +355,7 @@ $FontVer   = New-Object System.Drawing.Font('微软雅黑', 8)
 $FontBig   = New-Object System.Drawing.Font('Consolas', 25, [System.Drawing.FontStyle]::Bold)
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = '游戏崩溃诊断器'
+$form.Text = $script:T.AppTitle
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
 $form.Size = New-Object System.Drawing.Size(760, 636)
@@ -351,7 +375,7 @@ $gpuInfo = Get-GpuInfo
 
 # ── 顶部标题 ──
 $lblTitle = New-Object System.Windows.Forms.Label
-$lblTitle.Text = '游戏崩溃诊断器'
+$lblTitle.Text = $script:T.AppTitle
 $lblTitle.Font = $FontTitle
 $lblTitle.ForeColor = $C.Text
 $lblTitle.Location = New-Object System.Drawing.Point(44, 8)
@@ -360,7 +384,7 @@ $form.Controls.Add($lblTitle)
 
 $lblSub = New-Object System.Windows.Forms.Label
 $modeTxt = if ($script:HasNvidia) { '' } else { '    （通用模式）' }
-$lblSub.Text = "GPU  ·  $($gpuInfo.Name)    驱动 $($gpuInfo.Driver)$modeTxt"
+$lblSub.Text = "GPU  ·  $($gpuInfo.Name)    " + $script:T.Driver + " $($gpuInfo.Driver)$modeTxt"
 $lblSub.Font = $FontMid
 $lblSub.ForeColor = $C.Dim
 $lblSub.Location = New-Object System.Drawing.Point(8, 42)
@@ -369,7 +393,7 @@ $form.Controls.Add($lblSub)
 
 # ── 状态灯 ──
 $lblStatus = New-Object System.Windows.Forms.Label
-$lblStatus.Text = '○ 待机'
+$lblStatus.Text = $script:T.StatusIdle
 $lblStatus.Font = $FontMid
 $lblStatus.ForeColor = $C.Dim
 $lblStatus.Location = New-Object System.Drawing.Point(548, 16)
@@ -394,10 +418,10 @@ function New-Card($x, $y, $w, $h, $title) {
     $p
 }
 
-$cardTemp  = New-Card 6   66 178 74 '温度'
-$cardPower = New-Card 196 66 178 74 '功耗'
-$cardClock = New-Card 386 66 178 74 '核心频率'
-$cardUtil  = New-Card 576 66 178 74 'GPU 占用'
+$cardTemp  = New-Card 6   66 178 74 $script:T.CardTemp
+$cardPower = New-Card 196 66 178 74 $script:T.CardPower
+$cardClock = New-Card 386 66 178 74 $script:T.CardClock
+$cardUtil  = New-Card 576 66 178 74 $script:T.CardUtil
 
 function Add-BigValue($panel, $name) {
     $l = New-Object System.Windows.Forms.Label
@@ -472,7 +496,7 @@ $script:cpuBmp = $null
 # ── CPU 型号标题 ──
 $cpuInfo = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
 $cpuNameTxt = if ($cpuInfo) { $cpuInfo.Name.Trim() } else { 'CPU' }
-$cpuCoreTxt = if ($cpuInfo) { "$($cpuInfo.NumberOfCores) 核 / $($cpuInfo.NumberOfLogicalProcessors) 线程" } else { '' }
+$cpuCoreTxt = if ($cpuInfo) { $script:T.CoresThreads -f $cpuInfo.NumberOfCores, $cpuInfo.NumberOfLogicalProcessors } else { '' }
 
 $lblCpuModel = New-Object System.Windows.Forms.Label
 $lblCpuModel.Text = "CPU  ·  $cpuNameTxt    $cpuCoreTxt"
@@ -483,10 +507,10 @@ $lblCpuModel.AutoSize = $true
 $form.Controls.Add($lblCpuModel)
 
 # ── CPU 四个卡片 ──
-$cardCpuTemp  = New-Card 6   270 178 74 'CPU 温度'
-$cardCpuClock = New-Card 196 270 178 74 'CPU 频率'
-$cardCpuUtil  = New-Card 386 270 178 74 'CPU 占用'
-$cardCpuCores = New-Card 576 270 178 74 '活跃核心'
+$cardCpuTemp  = New-Card 6   270 178 74 $script:T.CardCpuTemp
+$cardCpuClock = New-Card 196 270 178 74 $script:T.CardCpuClock
+$cardCpuUtil  = New-Card 386 270 178 74 $script:T.CardCpuUtil
+$cardCpuCores = New-Card 576 270 178 74 $script:T.CardCores
 
 $valCpuTemp  = Add-BigValue $cardCpuTemp  'v'
 $valCpuClock = Add-BigValue $cardCpuClock 'v'
@@ -590,30 +614,49 @@ $btnMenu.BringToFront()
 
 $script:MainMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $script:MainMenu.Font = $FontBody
-$miStart = $script:MainMenu.Items.Add('开始记录')
-$miStop  = $script:MainMenu.Items.Add('停止记录')
+$miStart = $script:MainMenu.Items.Add($script:T.MenuStart)
+$miStop  = $script:MainMenu.Items.Add($script:T.MenuStop)
 [void]$script:MainMenu.Items.Add('-')
-$miLogs  = $script:MainMenu.Items.Add('打开数据目录')
-$miRep   = $script:MainMenu.Items.Add('打开崩溃报告')
-$miDiag  = $script:MainMenu.Items.Add('诊断报告')
-$miDxStatus = $script:MainMenu.Items.Add('DirectX 运行库：检测中…')
+$miLogs  = $script:MainMenu.Items.Add($script:T.MenuLogs)
+$miRep   = $script:MainMenu.Items.Add($script:T.MenuReports)
+$miDiag  = $script:MainMenu.Items.Add($script:T.MenuDiag)
+$miDxStatus = $script:MainMenu.Items.Add($script:T.DxChecking)
 $miDxStatus.Enabled = $false
-$miDxFix = $script:MainMenu.Items.Add('查看 / 重装 DirectX')
+$miDxFix = $script:MainMenu.Items.Add($script:T.DxView)
 [void]$script:MainMenu.Items.Add('-')
-$miAuto  = $script:MainMenu.Items.Add('开机自动启动')
+$miAuto  = $script:MainMenu.Items.Add($script:T.MenuAuto)
 $miAuto.CheckOnClick = $true
-$miMem   = $script:MainMenu.Items.Add('程序内存 -- MB')
+$miMem   = $script:MainMenu.Items.Add(($script:T.MenuMem -f 0))
 $miMem.Enabled = $false
 [void]$script:MainMenu.Items.Add('-')
-$miAbout = $script:MainMenu.Items.Add('关于')
+[void]$script:MainMenu.Items.Add('-')
+$miLang  = $script:MainMenu.Items.Add($script:T.MenuLang)
+$miZh    = $miLang.DropDownItems.Add('简体中文')
+$miEn    = $miLang.DropDownItems.Add('English')
+$miZh.Checked = ($script:LangCode -eq 'zh-CN')
+$miEn.Checked = ($script:LangCode -eq 'en-US')
+
+$applyLang = {
+    param($code, $label)
+    if (Set-Language $code) {
+        $lblHint.Text = "Language: $label  ·  Restarting..."
+        Start-Sleep -Milliseconds 400
+        Start-Process 'wscript.exe' -ArgumentList "`"$(Join-Path $Root '启动诊断器.vbs')`""
+        $script:ExitFlag = $true
+        $form.Close()
+    }
+}
+$miZh.Add_Click({ & $applyLang 'zh-CN' '简体中文' })
+$miEn.Add_Click({ & $applyLang 'en-US' 'English' })
+$miAbout = $script:MainMenu.Items.Add($script:T.MenuAbout)
 
 $btnMenu.Add_Click({
     try { $miAuto.Checked = Test-AutoStart } catch {}
     $script:MainMenu.Show($btnMenu, (New-Object System.Drawing.Point(0, $btnMenu.Height)))
 })
 
-$miStart.Add_Click({ if (-not $script:Recording) { Start-Logging 'system'; $lblHint.Text = '已手动开始记录。' } })
-$miStop.Add_Click({ if ($script:Recording) { Stop-Logging; $lblHint.Text = '已停止记录。' } })
+$miStart.Add_Click({ if (-not $script:Recording) { Start-Logging 'system'; $lblHint.Text = $script:T.HintManual } })
+$miStop.Add_Click({ if ($script:Recording) { Stop-Logging; $lblHint.Text = $script:T.HintStopped } })
 $miLogs.Add_Click({ Open-FolderWithFeedback $null '打开数据目录' $LogDir })
 $miRep.Add_Click({ Open-FolderWithFeedback $null '打开崩溃报告' $RepDir })
 $miDiag.Add_Click({ Show-DiagnosisWindow })
@@ -623,9 +666,9 @@ $miAbout.Add_Click({ Show-AboutDialog })
 $miAuto.Add_CheckedChanged({
     if (-not $script:AutoStartInit) { return }
     $ok = Set-AutoStart $miAuto.Checked
-    if (-not $ok) { $lblHint.Text = '设置失败：无法写入注册表启动项。'; return }
-    if ($miAuto.Checked) { $lblHint.Text = '已设置开机自动启动，开机后会在后台自动开始记录。' }
-    else { $lblHint.Text = '已取消开机自动启动。' }
+    if (-not $ok) { $lblHint.Text = $script:T.HintAutoFail; return }
+    if ($miAuto.Checked) { $lblHint.Text = $script:T.HintAutoOn }
+    else { $lblHint.Text = $script:T.HintAutoOff }
 })
 function Test-AutoStart {
     $v = (Get-ItemProperty -Path $script:RunKey -Name $script:RunName -ErrorAction SilentlyContinue).$($script:RunName)
@@ -658,7 +701,7 @@ $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "$($script:AppVersion)   数据目录: $Root"
+$lblVer.Text = $script:AppVersion + "   " + $script:T.DataDir + ": " + $Root
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 572)
@@ -674,7 +717,6 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:AppVersion = 'v5.61'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -710,7 +752,7 @@ function Start-Logging([string]$Category = 'system') {
     $script:PowerHist.Clear()
     $miStart.Enabled = $false
     $miStop.Enabled = $true
-    $lblStatus.Text = '● 记录中'
+    $lblStatus.Text = $script:T.StatusRec
     $lblStatus.ForeColor = $C.Accent
 }
 
@@ -1041,11 +1083,11 @@ function Draw-Chart {
     catch { }
 
     $spanMin = [math]::Round($cnt * $secPerPt / 60.0, 1)
-    $infoTxt = ("每 {0:g} 秒 1 点 · {1:N0} 点 · {2} 分钟" -f $secPerPt, $cnt, $spanMin)
+    $infoTxt = (("{0} · {1} · {2}" -f ($script:T.ChartPerPoint -f $secPerPt), ($script:T.ChartPoints -f $cnt), ($script:T.ChartMinutes -f $spanMin)))
     if ($r.Shift -gt 0 -and $script:HistTime.Count -gt 0) {
         $t0 = $script:HistTime[[math]::Min($r.From, $script:HistTime.Count - 1)]
         $t1 = $script:HistTime[[math]::Min($r.To - 1, $script:HistTime.Count - 1)]
-        $infoTxt = ("{0} ~ {1}  （已暂停，共 {2:N0} 点）" -f $t0.ToString('HH:mm:ss'), $t1.ToString('HH:mm:ss'), $cnt)
+        $infoTxt = ($script:T.ChartPaused -f $t0.ToString('HH:mm:ss'), $t1.ToString('HH:mm:ss'), $cnt)
     }
 
     $aGpu = Get-Slice $script:TempHist $r
@@ -1057,8 +1099,8 @@ function Draw-Chart {
         $mnB = ($bGpu | Measure-Object -Minimum).Minimum
         $mxB = ($bGpu | Measure-Object -Maximum).Maximum
         if ($script:HasNvidia) {
-            $labA = 'GPU 温度 °C   最高 {0:N0}  最低 {1:N0}' -f $mxA, $mnA
-            $labB = '功耗 W   最高 {0:N0}  最低 {1:N0}' -f $mxB, $mnB
+            $labA = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendGpuTemp, $script:T.StatMax, $mxA, $script:T.StatMin, $mnA)
+            $labB = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendPower, $script:T.StatMax, $mxB, $script:T.StatMin, $mnB)
             [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 $labA, $labB, '°C', 'W', $script:GpuHover)
@@ -1079,18 +1121,18 @@ function Draw-Chart {
         if ($aCpu.Count -ge 1) {
             $cCnt = $aCpu.Count
             $cSpan = [math]::Round($cCnt * $secPerPt / 60.0, 1)
-            $cInfo = ("每 {0:g} 秒 1 点 · {1:N0} 点 · {2} 分钟" -f $secPerPt, $cCnt, $cSpan)
+            $cInfo = (("{0} · {1} · {2}" -f ($script:T.ChartPerPoint -f $secPerPt), ($script:T.ChartPoints -f $cCnt), ($script:T.ChartMinutes -f $cSpan)))
             if ($r.Shift -gt 0 -and $script:CpuHistTime.Count -gt 0) {
                 $t0 = $script:CpuHistTime[[math]::Min($r.From, $script:CpuHistTime.Count - 1)]
                 $t1 = $script:CpuHistTime[[math]::Min($r.To - 1, $script:CpuHistTime.Count - 1)]
-                $cInfo = ("{0} ~ {1}  （已暂停，共 {2:N0} 点）" -f $t0.ToString('HH:mm:ss'), $t1.ToString('HH:mm:ss'), $cCnt)
+                $cInfo = ($script:T.ChartPaused -f $t0.ToString('HH:mm:ss'), $t1.ToString('HH:mm:ss'), $cCnt)
             }
             $mnC = ($aCpu | Measure-Object -Minimum).Minimum
             $mxC = ($aCpu | Measure-Object -Maximum).Maximum
             $mnF = ($bCpu | Measure-Object -Minimum).Minimum
             $mxF = ($bCpu | Measure-Object -Maximum).Maximum
-            $labC = 'CPU 温度 °C   最高 {0:N0}  最低 {1:N0}' -f $mxC, $mnC
-            $labF = '频率 MHz   最高 {0:N0}  最低 {1:N0}' -f $mxF, $mnF
+            $labC = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendCpuTemp, $script:T.StatMax, $mxC, $script:T.StatMin, $mnC)
+            $labF = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendFreq, $script:T.StatMax, $mxF, $script:T.StatMin, $mnF)
             [ChartRenderer]::Render($script:cpuBmp, $aCpu, $bCpu, $cCnt,
                 $C.Card, $C.Grid, $C.Accent, $script:ColPurple, $C.Dim, $cInfo,
                 $labC, $labF, '°C', 'MHz', $script:CpuHover)
@@ -1153,8 +1195,7 @@ function Update-UI {
         '^P[4-9]$' { "$($s.PState) 待机" }
         default { "$($s.PState)" }
     }
-    $lblDetail.Text = "显存 {0:N0} / {1} MB      系统内存 {2}      降频 {3}      性能档 {4}" -f `
-        $s.MemUsed, $memTotal, $ramTxt, $s.Throttle, $pstateTxt
+    $lblDetail.Text = ("{0} {1:N0} / {2} MB      {3} {4}      {5} {6}      {7} {8}" -f $script:T.RowVram, [double]$s.MemUsed, $memTotal, $script:T.RowSysMem, $ramTxt, $script:T.RowThrottle, $s.Throttle, $script:T.RowPower, $pstateTxt)
 
     # 记录
     if ($script:Recording) {
@@ -1229,11 +1270,11 @@ function Update-UI {
             if ($script:Recording) { Stop-Logging }
             $script:GameName = $game.ProcessName
             Start-Logging $script:GameName
-            $lblHint.Text = "已检测到游戏 $($game.ProcessName)（$($game.MainWindowTitle)），正在记录到 logs\$($game.ProcessName)\。"
+            $lblHint.Text = $script:T.HintGame -f $game.ProcessName, $game.ProcessName
         }
         $elapsed = [math]::Round(((Get-Date) - $script:GameStart).TotalMinutes, 1)
         if ($script:Recording) {
-            $lblStatus.Text = "● 游戏记录中  $($elapsed) 分"
+            $lblStatus.Text = $script:T.StatusGame + "  $($elapsed) min"
         }
     }
     else {
@@ -1266,7 +1307,7 @@ $script:GameScanResult = $null
 
     try {
         $ws = [System.Diagnostics.Process]::GetCurrentProcess().WorkingSet64 / 1MB
-        $miMem.Text = "程序内存 {0:N0} MB" -f $ws
+        $miMem.Text = $script:T.MenuMem -f $ws
     } catch {}
 
     # 收到"显示窗口"请求（用户重复点了图标）
@@ -1282,8 +1323,7 @@ $script:GameScanResult = $null
         $script:BtnRestore = $null
     }
 
-    $lblStats.Text = "已记录 {0:N0} 条    报告 {1} 份    文件 {2}" -f `
-        $script:LogCount, $script:ReportCount, $(if ($script:LogFile) { Split-Path $script:LogFile -Leaf } else { '—' })
+    $lblStats.Text = ("{0} {1:N0}    {2} {3}    {4} {5}" -f $script:T.RowLogCount, [int]$script:LogCount, $script:T.RowReports, [int]$script:ReportCount, $script:T.RowFile, $(if ($script:LogFile) { Split-Path $script:LogFile -Leaf } else { "-" }))
 }
 
 # ════════════════════════════════ 鼠标悬停提示 ════════════════════════════════
@@ -1403,7 +1443,7 @@ $form.Add_Shown({
     $hasGame = $null -ne (Find-RunningGame)
     if (-not $hasGame -and -not $script:Recording) {
         Start-Logging 'system'
-        $lblHint.Text = '未检测到游戏，正在做系统监控（logs\system\）。启动任意全屏游戏会自动切换记录。'
+        $lblHint.Text = $script:T.HintNoGame
     }
     Update-UI
 })
@@ -1651,16 +1691,16 @@ function Update-DxIndicator {
     if ($null -eq $miDxStatus) { return }
 
     if ($dx.Missing.Count -eq 0) {
-        $miDxStatus.Text = 'DirectX 运行库：完整正常'
+        $miDxStatus.Text = $script:T.DxOk
         $miDxStatus.ForeColor = $C.Accent
-        $miDxFix.Text = '查看 / 重装 DirectX'
+        $miDxFix.Text = $script:T.DxView
         $miDxFix.ForeColor = $C.Text
     }
     else {
         $names = ($dx.Missing | ForEach-Object { $_.Name }) -join '、'
-        $miDxStatus.Text = "DirectX 运行库：缺少 $($dx.Missing.Count) 项（$names）"
+        $miDxStatus.Text = $script:T.DxMissing -f $dx.Missing.Count, $names
         $miDxStatus.ForeColor = $C.Warn
-        $miDxFix.Text = '修复 DirectX'
+        $miDxFix.Text = $script:T.DxFix
         $miDxFix.ForeColor = $C.Warn
     }
 }
@@ -2373,7 +2413,7 @@ $trayIcon.Visible = $true
 
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $miShow = $trayMenu.Items.Add('显示主界面')
-$miFolder = $trayMenu.Items.Add('打开数据目录')
+$miFolder = $trayMenu.Items.Add($script:T.MenuLogs)
 [void]$trayMenu.Items.Add('-')
 $miExit = $trayMenu.Items.Add('退出')
 $trayIcon.ContextMenuStrip = $trayMenu

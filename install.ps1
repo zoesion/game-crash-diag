@@ -49,6 +49,10 @@ $dataSrc = Join-Path $src 'data'
 if (Test-Path $dataSrc) {
     Copy-Item $dataSrc (Join-Path $InstallDir 'data') -Recurse -Force
 }
+$langSrc = Join-Path $src 'lang'
+if (Test-Path $langSrc) {
+    Copy-Item $langSrc (Join-Path $InstallDir 'lang') -Recurse -Force
+}
 $toolSrc = Join-Path $src 'tools'
 if (Test-Path $toolSrc) {
     Copy-Item $toolSrc (Join-Path $InstallDir 'tools') -Recurse -Force
