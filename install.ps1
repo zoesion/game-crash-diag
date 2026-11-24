@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     把程序安装到当前用户目录（不需要管理员权限），并创建快捷方式和卸载入口。
-    安装位置：D:\Program\GameCrashDiag（可在安装时修改）
+    安装位置：D:\Program Files\GameCrashDiag（可在安装时修改）
 #>
 [CmdletBinding()]
 param(
@@ -15,7 +15,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
-    $InstallDir = 'D:\Program\GameCrashDiag'
+    $InstallDir = 'D:\Program Files\GameCrashDiag'
 }
 $src = $PSScriptRoot
 
