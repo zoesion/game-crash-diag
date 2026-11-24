@@ -332,7 +332,7 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = '游戏崩溃诊断器'
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
-$form.Size = New-Object System.Drawing.Size(760, 700)
+$form.Size = New-Object System.Drawing.Size(760, 706)
 $form.MinimumSize = New-Object System.Drawing.Size(680, 660)
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $C.Bg
@@ -531,7 +531,7 @@ $lblDetail = New-Object System.Windows.Forms.Label
 $lblDetail.Text = 'CPU -- / -- / --      显存 -- / -- MB      降频 --'
 $lblDetail.Font = $FontSmall
 $lblDetail.ForeColor = $C.Dim
-$lblDetail.Location = New-Object System.Drawing.Point(6, 496)
+$lblDetail.Location = New-Object System.Drawing.Point(6, 498)
 $lblDetail.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblDetail)
 
@@ -539,7 +539,7 @@ $lblStats = New-Object System.Windows.Forms.Label
 $lblStats.Text = '本次未记录'
 $lblStats.Font = $FontSmall
 $lblStats.ForeColor = $C.Dim
-$lblStats.Location = New-Object System.Drawing.Point(6, 518)
+$lblStats.Location = New-Object System.Drawing.Point(6, 522)
 $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
@@ -591,6 +591,9 @@ $miStop  = $script:MainMenu.Items.Add('停止记录')
 $miLogs  = $script:MainMenu.Items.Add('打开数据目录')
 $miRep   = $script:MainMenu.Items.Add('打开崩溃报告')
 $miDiag  = $script:MainMenu.Items.Add('诊断报告')
+$miDxStatus = $script:MainMenu.Items.Add('DirectX 运行库：检测中…')
+$miDxStatus.Enabled = $false
+$miDxFix = $script:MainMenu.Items.Add('查看 / 重装 DirectX')
 [void]$script:MainMenu.Items.Add('-')
 $miAuto  = $script:MainMenu.Items.Add('开机自动启动')
 $miAuto.CheckOnClick = $true
@@ -609,6 +612,7 @@ $miStop.Add_Click({ if ($script:Recording) { Stop-Logging; $lblHint.Text = '已�
 $miLogs.Add_Click({ Open-FolderWithFeedback $null '打开数据目录' $LogDir })
 $miRep.Add_Click({ Open-FolderWithFeedback $null '打开崩溃报告' $RepDir })
 $miDiag.Add_Click({ Show-DiagnosisWindow })
+$miDxFix.Add_Click({ Show-DxAction })
 $miAbout.Add_Click({ Show-AboutDialog })
 
 $miAuto.Add_CheckedChanged({
@@ -648,32 +652,11 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
-$lblDx = New-Object System.Windows.Forms.Label
-$lblDx.Text = 'DirectX 运行库：检查中…'
-$lblDx.Font = $FontSmall
-$lblDx.ForeColor = $C.Dim
-$lblDx.Location = New-Object System.Drawing.Point(6, 576)
-$lblDx.Size = New-Object System.Drawing.Size(540, 20)
-$form.Controls.Add($lblDx)
-
-$btnDxFix = New-Object System.Windows.Forms.Button
-$btnDxFix.Text = '检查 DirectX'
-$btnDxFix.Size = New-Object System.Drawing.Size(170, 30)
-$btnDxFix.Location = New-Object System.Drawing.Point(560, 572)
-$btnDxFix.FlatStyle = 'Flat'
-$btnDxFix.Font = $FontSmall
-$btnDxFix.BackColor = [System.Drawing.Color]::FromArgb(48, 48, 58)
-$btnDxFix.ForeColor = $C.Text
-$btnDxFix.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(96, 96, 116)
-$btnDxFix.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(46, 46, 54)
-$btnDxFix.Add_Click({ Show-DxAction })
-$form.Controls.Add($btnDxFix)
-$btnDxFix.BringToFront()
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.7   数据目录: $Root"
+$lblVer.Text = "v4.8   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
-$lblVer.Location = New-Object System.Drawing.Point(6, 614)
+$lblVer.Location = New-Object System.Drawing.Point(6, 626)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
 $form.Controls.Add($lblVer)
 
@@ -686,7 +669,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:AppVersion = 'v4.7'
+$script:AppVersion = 'v4.8'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -1449,7 +1432,7 @@ try {
     $cpuChart.Left = $M;   $cpuChart.Width = $inner
 
     # 左侧文字
-    foreach ($l in @($lblSub, $lblCpuModel, $lblDetail, $lblStats, $lblHint, $lblDx, $lblVer)) {
+    foreach ($l in @($lblSub, $lblCpuModel, $lblDetail, $lblStats, $lblHint, $lblVer)) {
         if ($l) { $l.Left = $M; $l.Width = $inner }
     }
     # 卡片内单位标签统一右对齐
@@ -1462,10 +1445,8 @@ try {
     }
     catch { }
     $lblTitle.Left = [int](44 * $script:DpiScale)
-    $lblDx.Width = [int](540 * $script:DpiScale)
 
     # 右侧控件贴右边
-    $btnDxFix.Left = $cw - $M - $btnDxFix.Width
 }
 catch { }
 
@@ -1644,23 +1625,23 @@ function Invoke-DxRepair {
 }
 
 function Update-DxIndicator {
-    <# 刷新主界面上的 DirectX 状态行 + 按钮文字 #>
+    <# 刷新菜单里的 DirectX 状态项 #>
     $dx = Get-DxStatus
     $script:DxStatus = $dx
-    if ($null -eq $lblDx) { return }
+    if ($null -eq $miDxStatus) { return }
 
     if ($dx.Missing.Count -eq 0) {
-        $lblDx.Text = 'DirectX 运行库：12 项组件齐全，不需要修复'
-        $lblDx.ForeColor = $C.Accent
-        $btnDxFix.Text = '查看 / 重装'
-        $btnDxFix.ForeColor = $C.Text
+        $miDxStatus.Text = 'DirectX 运行库：完整正常'
+        $miDxStatus.ForeColor = $C.Accent
+        $miDxFix.Text = '查看 / 重装 DirectX'
+        $miDxFix.ForeColor = $C.Text
     }
     else {
         $names = ($dx.Missing | ForEach-Object { $_.Name }) -join '、'
-        $lblDx.Text = "DirectX 运行库：缺少 $($dx.Missing.Count) 项（$names），建议修复"
-        $lblDx.ForeColor = $C.Warn
-        $btnDxFix.Text = '修复 DirectX'
-        $btnDxFix.ForeColor = $C.Warn
+        $miDxStatus.Text = "DirectX 运行库：缺少 $($dx.Missing.Count) 项（$names）"
+        $miDxStatus.ForeColor = $C.Warn
+        $miDxFix.Text = '修复 DirectX'
+        $miDxFix.ForeColor = $C.Warn
     }
 }
 
@@ -2439,7 +2420,6 @@ if ($Shot) {
         Write-Output ("提示框: visible={0} size={1}x{2} pos=({3},{4}) text={5}" -f `
             $tip.Visible, $tip.Width, $tip.Height, $tip.Left, $tip.Top, $tip.Text)
     }
-    Write-Output ("SIZE: form={0}x{1} client={2}x{3} card4R={4} chartR={5} btnDxR={6} lblDxW={7}" -f $form.Width, $form.Height, $form.ClientSize.Width, $form.ClientSize.Height, ($cardUtil.Left + $cardUtil.Width), ($chart.Left + $chart.Width), ($btnDxFix.Left + $btnDxFix.Width), $lblDx.Width)
     $bmp2 = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
     $form.DrawToBitmap($bmp2, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
     $bmp2.Save($Shot, [System.Drawing.Imaging.ImageFormat]::Png)
