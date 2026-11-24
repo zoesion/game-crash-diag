@@ -67,7 +67,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.66'
+$script:AppVersion = 'v5.67'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -2005,7 +2005,7 @@ function Get-HealthReportText {
     $now = Get-Date
     $ln = ('=' * 60)
     [void]$L_.Add($ln)
-    [void]$L_.Add((& $LANG_ "  游戏崩溃诊断器 · 诊断报告" "  Game Crash Doctor - Diagnosis Report"))
+    [void]$L_.Add((& $LANG_ "  游戏崩溃诊断器 · 诊断报告" "  GameCrashDiag - Diagnosis Report"))
     [void]$L_.Add((& $LANG_ "  生成时间: $($now.ToString('yyyy-MM-dd HH:mm:ss'))" "  Generated: $($now.ToString('yyyy-MM-dd HH:mm:ss'))"))
     [void]$L_.Add($ln)
     [void]$L_.Add('')
@@ -2257,7 +2257,7 @@ function Get-HealthReportText {
 }
 function Show-AboutDialog {
     $aboutEn = @(
-        ("Game Crash Doctor  " + $script:AppVersion),
+        ("GameCrashDiag  " + $script:AppVersion),
         "",
         "[What it is]",
         "A lightweight local monitor and crash forensics tool. While a game runs it records GPU and CPU temperature, power, clocks and usage; after a crash it produces a report you can actually read.",

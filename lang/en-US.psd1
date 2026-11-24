@@ -2,7 +2,7 @@
     Language     = 'English'
     LanguageCode = 'en-US'
 
-    AppTitle    = 'Game Crash Doctor'
+    AppTitle    = 'GameCrashDiag'
     AppSub      = 'GameCrashDiag'
     StatusIdle  = '● Idle'
     StatusRec   = '● Recording'
@@ -75,6 +75,6 @@
     ThrottleNone= 'Normal'
     DataDir     = 'Data dir'
 
-    DiagTitle   = 'Diagnosis - Game Crash Doctor'
-    AboutTitle  = 'About Game Crash Doctor'
+    DiagTitle   = 'Diagnosis - GameCrashDiag'
+    AboutTitle  = 'About GameCrashDiag'
 }
