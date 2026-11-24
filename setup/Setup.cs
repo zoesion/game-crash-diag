@@ -22,10 +22,10 @@ static class Setup
     static string PickWorkDir()
     {
         string baseName = "GameCrashDiag-setup-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        // 只用用户目录，绝不落到 exe 所在目录
         string[] candidates = new string[]
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameCrashDiag", "setup", baseName),
-            Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".", baseName),
             Path.Combine(Path.GetTempPath(), baseName)
         };
 
@@ -108,6 +108,7 @@ static class Setup
 
             string finalDir = string.IsNullOrEmpty(targetDir) ? @"D:\GameCrashDiag" : targetDir;
             Log("done, dir=" + finalDir);
+            try { Directory.Delete(work, true); } catch { }
             MessageBox.Show(
                 "安装完成！\r\n\r\n" +
                 "安装位置：" + finalDir + "\r\n" +
