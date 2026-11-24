@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    BF6 GPU 监控器 —— 战地6 崩溃取证工具（图形界面版）
+    GameCrashDiag —— 游戏崩溃诊断器（图形界面版）
 
 .DESCRIPTION
     实时显示 GPU 温度/功耗/频率/占用/降频原因，并自动把数据记成 CSV。
@@ -26,6 +26,7 @@ param(
     [switch]$TestView,
     [switch]$ShowAbout,
     [switch]$ShowDiagnosis,
+    [switch]$TestCrash,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -67,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.67'
+$script:AppVersion = 'v5.68'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -717,7 +718,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
+$script:MaxPoints  = [math]::Max(1000, [int](21600000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 6 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
 $script:ViewShiftPts = 0                        # 距最新数据的偏移点数，0 = 跟随最新
@@ -1289,13 +1290,12 @@ function Update-UI {
                 Stop-Logging
                 $verdict = Test-IsCrash $exitTime
                 $rep = Write-CrashReport $exitTime $verdict.IsCrash $verdict.Reason
-                if ($verdict.IsCrash) {
-                    $lblHint.Text = "⚠ 判定为崩溃（$($verdict.Reason)），报告: $(Split-Path $rep -Leaf)"
-                    $lblHint.ForeColor = $C.Bad
-                    [System.Windows.Forms.MessageBox]::Show(
-                        "检测到 $($script:GameName) 异常退出（$($verdict.Reason)）。`n`n崩溃报告已保存：`n$rep`n`n记录条数: $($script:LogCount)",
-                        '游戏崩溃诊断器 — 检测到崩溃', 'OK', 'Warning') | Out-Null
-                }
+                  if ($verdict.IsCrash) {
+                      $lblHint.Text = "⚠ 判定为崩溃（$($verdict.Reason)），报告: $(Split-Path $rep -Leaf)"
+                      $lblHint.ForeColor = $C.Bad
+                      $snap = Save-CrashSnapshot -Stamp ($exitTime.ToString('yyyyMMdd-HHmmss'))
+                      Show-CrashCard -ReportPath $rep -SnapshotPath $snap -Reason $verdict.Reason
+                  }
                 else {
                     $lblHint.Text = "游戏正常退出，对局记录已保存: $(Split-Path $rep -Leaf)"
                     $lblHint.ForeColor = $C.Dim
@@ -1515,7 +1515,7 @@ try {
 catch { }
 
 # ── 单实例保护：重复点图标只保留一个实例 ──
-if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView)) {
+if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView -or $TestCrash -or $ShowAbout -or $ShowDiagnosis)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
         # 已有实例：写信号文件让它把窗口弹出来，然后静默退出
@@ -2255,6 +2255,139 @@ function Get-HealthReportText {
 
     return $L_
 }
+function Save-CrashSnapshot {
+    <# 崩溃时把最近 5 分钟的曲线渲染成一张 PNG，存到 reports\ 里供报告引用 #>
+    param([string]$Stamp, [int]$Points = 600)
+
+    try {
+        if ($script:TempHist.Count -lt 5) { return $null }
+        $take = [math]::Min($Points, $script:TempHist.Count)
+        $from = $script:TempHist.Count - $take
+
+        $w = 1200; $h = 340
+        $bmp = New-Object System.Drawing.Bitmap($w, $h)
+        $vals = New-Object 'double[]' $take
+        $vals2 = New-Object 'double[]' $take
+        $script:TempHist.CopyTo($from, $vals, 0, $take)
+        if ($script:PowerHist.Count -ge $script:TempHist.Count) {
+            $script:PowerHist.CopyTo($from, $vals2, 0, $take)
+        }
+
+        $t0 = $null; $t1 = $null
+        if ($script:HistTime.Count -ge $script:TempHist.Count) {
+            $t0 = $script:HistTime[$from]
+            $t1 = $script:HistTime[$script:TempHist.Count - 1]
+        }
+        $label = if ($t0 -and $t1) { "$($t0.ToString('HH:mm:ss')) - $($t1.ToString('HH:mm:ss'))" } else { '' }
+
+        [ChartRenderer]::Render($bmp, $vals, $vals2, $take,
+            $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim,
+            '崩溃前 5 分钟 GPU 曲线   ' + $label,
+            '温度 (°C)', '功耗 (W)', '°C', 'W', -1)
+
+        $path = Join-Path $RepDir ("crash-$Stamp.png")
+        $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bmp.Dispose()
+        return $path
+    }
+    catch { return $null }
+}
+
+function Show-CrashCard {
+    <# 崩溃后弹一个精简结论卡片：一句话原因 + 建议 #>
+    param([string]$ReportPath, [string]$SnapshotPath, [string]$Reason = '')
+
+    $title = '⚠ 检测到游戏崩溃'
+    $verdict = ''
+    $advice = @()
+    try {
+        $lines = Get-Content $ReportPath -Encoding UTF8
+        $inFind = $false
+        foreach ($l in $lines) {
+            if ($l -match '【诊断结论】|\[Findings\]') { $inFind = $true; continue }
+            if ($l -match '^【建议】|^\[Suggestions\]') { $inFind = $false }
+            if ($inFind -and $l -match '^\s+\d+\.\s*(.+)$') {
+                if (-not $verdict) { $verdict = $matches[1] }
+                elseif ($advice.Count -lt 2) { $advice += $matches[1] }
+            }
+        }
+        if (-not $verdict) {
+            $verdict = if ($Reason) { "崩溃特征：$Reason（未发现明显异常指标）" } else { '已生成诊断报告' }
+        }
+    }
+    catch { $verdict = '已生成诊断报告' }
+
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = $script:T.AppTitle
+    $dlg.Size = New-Object System.Drawing.Size(560, 300)
+    $dlg.StartPosition = 'CenterScreen'
+    $dlg.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
+    $dlg.ForeColor = $C.Text
+    $dlg.TopMost = $true
+    $dlg.FormBorderStyle = 'FixedDialog'
+    $dlg.MaximizeBox = $false
+    $dlg.MinimizeBox = $false
+    try { $dlg.Icon = $form.Icon } catch {}
+
+    $lblHead = New-Object System.Windows.Forms.Label
+    $lblHead.Text = $title
+    $lblHead.Font = New-Object System.Drawing.Font('微软雅黑', 14, [System.Drawing.FontStyle]::Bold)
+    $lblHead.ForeColor = $C.Warn
+    $lblHead.AutoSize = $true
+    $lblHead.Location = New-Object System.Drawing.Point(20, 18)
+    $dlg.Controls.Add($lblHead)
+
+    $lblWhy = New-Object System.Windows.Forms.Label
+    $lblWhy.Text = $verdict
+    $lblWhy.Font = New-Object System.Drawing.Font('微软雅黑', 10)
+    $lblWhy.ForeColor = $C.Text
+    $lblWhy.Size = New-Object System.Drawing.Size(510, 60)
+    $lblWhy.Location = New-Object System.Drawing.Point(20, 58)
+    $dlg.Controls.Add($lblWhy)
+
+    $y = 122
+    foreach ($a in $advice) {
+        $lblA = New-Object System.Windows.Forms.Label
+        $lblA.Text = '· ' + $a
+        $lblA.Font = New-Object System.Drawing.Font('微软雅黑', 9)
+        $lblA.ForeColor = $C.Accent
+        $lblA.Size = New-Object System.Drawing.Size(510, 22)
+        $lblA.Location = New-Object System.Drawing.Point(20, $y)
+        $dlg.Controls.Add($lblA)
+        $y += 26
+    }
+
+    $btnOpen = New-Object System.Windows.Forms.Button
+    $btnOpen.Text = '查看完整报告'
+    $btnOpen.Size = New-Object System.Drawing.Size(140, 34)
+    $btnOpen.Location = New-Object System.Drawing.Point(232, ($y + 10))
+    $btnOpen.FlatStyle = 'Flat'
+    $btnOpen.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+    $btnOpen.ForeColor = $C.Accent
+    $btnOpen.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+    $btnOpen.Add_Click({
+        try { Start-Process 'notepad.exe' -ArgumentList "`"$ReportPath`"" } catch {}
+        if ($SnapshotPath -and (Test-Path $SnapshotPath)) {
+            try { Start-Process $SnapshotPath } catch {}
+        }
+        $dlg.Close()
+    })
+    $dlg.Controls.Add($btnOpen)
+
+    $btnClose2 = New-Object System.Windows.Forms.Button
+    $btnClose2.Text = '关闭'
+    $btnClose2.Size = New-Object System.Drawing.Size(100, 34)
+    $btnClose2.Location = New-Object System.Drawing.Point(382, ($y + 10))
+    $btnClose2.FlatStyle = 'Flat'
+    $btnClose2.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+    $btnClose2.ForeColor = $C.Text
+    $btnClose2.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+    $btnClose2.Add_Click({ $dlg.Close() })
+    $dlg.Controls.Add($btnClose2)
+
+    [void]$dlg.ShowDialog($form)
+}
+
 function Show-AboutDialog {
     $aboutEn = @(
         ("GameCrashDiag  " + $script:AppVersion),
@@ -2643,6 +2776,18 @@ if ($ShowAbout -or $ShowDiagnosis) {
     Start-Sleep -Milliseconds 800
     try { Update-DxIndicator } catch {}
     if ($ShowAbout) { Show-AboutDialog } else { Show-DiagnosisWindow }
+    exit 0
+}
+if ($TestCrash) {
+    Start-Logging 'system'
+    for ($i = 0; $i -lt 240; $i++) { Update-UI; Start-Sleep -Milliseconds 60 }
+    $exitTime = Get-Date
+    Stop-Logging
+    $rep = Write-CrashReport $exitTime $true '测试模拟崩溃'
+    $snap = Save-CrashSnapshot -Stamp ($exitTime.ToString('yyyyMMdd-HHmmss'))
+    Write-Output "报告: $rep"
+    Write-Output "快照: $snap"
+    Show-CrashCard -ReportPath $rep -SnapshotPath $snap -Reason $verdict.Reason
     exit 0
 }
 if ($Minimized) {
