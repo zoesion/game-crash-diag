@@ -14,3 +14,9 @@ desktop.ini
 
 # 本地 GitHub 配置
 .github-remote
+
+# 构建产物（可用 构建安装程序.ps1 重新生成）
+*-安装程序.exe
+
+# 安装器解压出来的临时目录
+GameCrashDiag-setup-*
