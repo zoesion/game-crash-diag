@@ -24,7 +24,7 @@ try {
     $selfPid = $PID
     $parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction SilentlyContinue).ParentProcessId
     Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match 'BF6Monitor\.ps1' -and $_.ProcessId -ne $selfPid -and $_.ProcessId -ne $parentPid } |
+        Where-Object { $_.CommandLine -match 'GameCrashDiag\.ps1|BF6Monitor\.ps1' -and $_.ProcessId -ne $selfPid -and $_.ProcessId -ne $parentPid } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 } catch {}
 
@@ -133,3 +133,5 @@ if (-not $Silent) {
         Write-Host '  已启动。' -ForegroundColor Green
     }
 }
+
+exit 0
