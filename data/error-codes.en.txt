@@ -1,0 +1,27 @@
+0x887A0006|DXGI_ERROR_DEVICE_HUNG|GPU stopped responding to rendering commands|Unstable overclock, driver bug, GPU compute unit fault|Remove overclock; update/rollback driver; lower power limit; disable HAGS
+0x887A0005|DXGI_ERROR_DEVICE_REMOVED|GPU device was removed or reset (usually follows a hang)|Driver crash then device reset, GPU dropout, insufficient power|Check nvlddmkm events; inspect power and temps; clean driver reinstall with DDU
+0x887A0007|DXGI_ERROR_DEVICE_RESET|GPU device was reset|TDR timeout or driver fault|Raise TdrDelay; test stability; update driver
+0x887A0020|DXGI_ERROR_DRIVER_INTERNAL_ERROR|Internal driver error|Driver bug or OS mismatch|Update to the game-recommended driver; check Windows updates
+0x887A0004|DXGI_ERROR_UNSUPPORTED|Requested DXGI feature is not supported|Driver too old or GPU lacks the feature|Update driver; verify DirectX 12 support
+0x887A0001|DXGI_ERROR_INVALID_CALL|Invalid DXGI call from game or driver|Game bug, MOD conflict, driver fault|Verify game files; remove MODs
+0xC0000005|ACCESS_VIOLATION|Accessed invalid memory (most common crash)|Game bug, unstable RAM, driver out-of-bounds, injected DLL|Disable overlays and MODs; run a memory test; verify game files
+0xC0000409|STACK_BUFFER_OVERRUN|Stack overflow or security check failure|Anti-cheat conflict, injected DLL, broken system component|Remove injectors; verify game files
+0xC0000374|HEAP_CORRUPTION|Heap memory was corrupted|Faulty RAM, third-party DLL, driver out-of-bounds|Memory test; clean boot troubleshooting
+0x8007000E|E_OUTOFMEMORY|Out of VRAM or RAM|Texture settings too high, VRAM leak, background apps|Lower texture quality; close background apps; increase pagefile
+0xC000001D|ILLEGAL_INSTRUCTION|Executed an illegal CPU instruction|Unstable CPU (overclock/undervolt), corrupted binary|Load BIOS defaults; remove CPU overclock
+0x00000116|VIDEO_TDR_FAILURE|GPU driver timed out; the system reset the GPU|Overclock, driver bug, power/thermal, GPU hardware|Remove overclock; lower power limit; update driver; check cooling
+0x00000117|VIDEO_TDR_TIMEOUT_DETECTED|GPU driver did not respond within the timeout|Same as above|Same as above
+0x0000003B|SYSTEM_SERVICE_EXCEPTION|System service routine exception|Driver conflict or memory issue|Clean boot; update drivers
+0x0000001A|MEMORY_MANAGEMENT|Memory management failure|Faulty RAM or unstable overclock|Memory test; restore default clocks
+0x00000124|WHEA_UNCORRECTABLE_ERROR|Uncorrectable hardware error|CPU/RAM/mainboard hardware or unstable overclock|Restore default clocks; check cooling and power; RMA if needed
+0x0000009F|DRIVER_POWER_STATE_FAILURE|Driver failed a power state transition|Driver bug, sleep/wake conflict|Update drivers; disable fast startup
+0x00000101|CLOCK_WATCHDOG_TIMEOUT|A CPU core stopped responding|CPU overclock/undervolt unstable, insufficient cooling|Restore defaults; improve cooling
+0x0000007E|SYSTEM_THREAD_EXCEPTION_NOT_HANDLED|Unhandled exception in a system thread|Driver bug or memory issue|Update drivers; memory test
+nvlddmkm-13|NVIDIA driver: global graphics processor exception|GPU compute units reported errors (multiple warp errors)|Unstable core clock, VRAM overheating, aging hardware|Remove overclock; lower clock/power limit; improve cooling
+nvlddmkm-14|NVIDIA driver: memory access fault|VRAM read/write error|VRAM overclock, VRAM overheating, hardware fault|Remove VRAM overclock; lower power; check cooling
+nvlddmkm-153|NVIDIA driver: engine reset|Internal driver engine was reset|Driver bug or hardware instability|Update driver; watch for recurrence
+nvlddmkm-4101|NVIDIA driver stopped responding and recovered|Short GPU hang, driver recovered (TDR)|Overclock, driver, power delivery|Remove overclock; raise TdrDelay; update driver
+livekernel-141|LiveKernelEvent 141: GPU hardware error|System logged a hardware-level GPU fault|Insufficient power delivery, overclock, GPU hardware|Lower power limit; remove overclock; check the power adapter
+livekernel-117|LiveKernelEvent 117: display driver timeout|Same TDR family|Same as above|Same as above
+livekernel-1a1|LiveKernelEvent 1a1: memory management fault|Memory subsystem reported an error|RAM or memory overclock|Memory test; restore default clocks
+event-41|Kernel-Power 41: system shut down unexpectedly|Sudden power loss, freeze, or reboot after a bugcheck|Power interruption, PSU fault, hardware hang|Check the PSU; disable auto-restart to capture the bugcheck

@@ -67,7 +67,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.62'
+$script:AppVersion = 'v5.63'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -744,7 +744,11 @@ function Start-Logging([string]$Category = 'system') {
     $prefix = if ($Category -eq 'system') { 'sys' } else { $Category }
     $script:LogCategory = $Category
     $script:LogFile = Join-Path $sub "$prefix-$stamp.csv"
-    $hdr = '时间,GPU温度(°C),GPU功耗(W),GPU核心频率(MHz),GPU显存频率(MHz),GPU占用(%),显存占用(%),显存已用(MB),电源状态,降频原因码,功耗墙,硬件降频,温度墙,降频说明,CPU温度(°C),CPU频率(MHz),CPU占用(%),活跃核心数,总核心数,内存占用(%)'
+    $hdr = if ($script:T.LanguageCode -eq 'en-US') {
+        'Time,GPU_Temp(C),GPU_Power(W),GPU_Clock(MHz),GPU_MemClock(MHz),GPU_Usage(%),VRAM_Usage(%),VRAM_Used(MB),PState,ThrottleMask,PowerLimit,HW_Slowdown,ThermalLimit,ThrottleText,CPU_Temp(C),CPU_Clock(MHz),CPU_Usage(%),ActiveCores,TotalCores,RAM_Usage(%)'
+    } else {
+        '时间,GPU温度(°C),GPU功耗(W),GPU核心频率(MHz),GPU显存频率(MHz),GPU占用(%),显存占用(%),显存已用(MB),电源状态,降频原因码,功耗墙,硬件降频,温度墙,降频说明,CPU温度(°C),CPU频率(MHz),CPU占用(%),活跃核心数,总核心数,内存占用(%)'
+    }
     Set-Content -Path $script:LogFile -Value $hdr -Encoding UTF8
     $script:LogCount = 0
     $script:Recording = $true
@@ -1747,9 +1751,10 @@ function Show-DxAction {
 
 function Get-ErrorCodeTable {
     <# 读取 data\error-codes.txt（code|名称|含义|原因|建议），带缓存 #>
-    if ($script:CodeTable) { return $script:CodeTable }
+    if ($script:CodeTable -and $script:CodeTableLang -eq $script:T.LanguageCode) { return $script:CodeTable }
     $table = @{}
-    $path = Join-Path $Root 'data\error-codes.txt'
+    $codeFile = if ($script:T.LanguageCode -eq 'en-US') { 'error-codes.en.txt' } else { 'error-codes.txt' }
+    $path = Join-Path $Root ('data\' + $codeFile)
     if (Test-Path $path) {
         foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
             if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) { continue }
@@ -1766,6 +1771,7 @@ function Get-ErrorCodeTable {
         }
     }
     $script:CodeTable = $table
+    $script:CodeTableLang = $script:T.LanguageCode
     return $table
 }
 
@@ -1796,7 +1802,7 @@ function Get-CrashEvidence {
                 Select-Object -First 2000
         foreach ($e in $evts) {
             if ($e.ProviderName -eq 'nvlddmkm') {
-                & $addCode "nvlddmkm-$($e.Id)" '系统事件日志' 'nvlddmkm' $e.Id $e.TimeCreated
+                & $addCode "nvlddmkm-$($e.Id)" $(if ($script:T.LanguageCode -eq 'en-US') { 'System event log' } else { '系统事件日志' }) 'nvlddmkm' $e.Id $e.TimeCreated
             }
             elseif ($e.Id -eq 41) {
                 & $addCode 'event-41' '系统事件日志' 'Kernel-Power' 41 $e.TimeCreated
@@ -1842,19 +1848,21 @@ function Get-CrashEvidence {
 
 function Get-CodeExplanationLines {
     <# 把证据翻译成人能看懂的解释，标明来源、次数、时间 #>
+    $e = ($script:T.LanguageCode -eq 'en-US')
+    $LANG_ = { param($zh, $en) if ($e) { $en } else { $zh } }
     $table = Get-ErrorCodeTable
     $ev = Get-CrashEvidence
     $out = New-Object System.Collections.Generic.List[string]
 
     $reportCount = @(Get-ChildItem $RepDir -Filter 'crash-*.txt' -ErrorAction SilentlyContinue).Count
-    [void]$out.Add('  数据来源：Windows 系统事件日志（最近 7 天） + reports 目录的崩溃报告')
+    [void]$out.Add((& $LANG_ '  数据来源：Windows 系统事件日志（最近 7 天） + reports 目录的崩溃报告' '  Source: Windows System event log (last 7 days) + crash reports in reports\'))
     if ($reportCount -eq 0) {
-        [void]$out.Add('  本次没有崩溃报告，下面都是系统日志里的历史驱动事件，不是这段时间新发生的')
+        [void]$out.Add((& $LANG_ '  本次没有崩溃报告，下面都是系统日志里的历史驱动事件，不是这段时间新发生的' '  No crash reports this time - the entries below are historical driver events from the log'))
     }
     [void]$out.Add('')
 
     if ($ev.Count -eq 0) {
-        [void]$out.Add('  最近 7 天没有捕获到错误代码。')
+        [void]$out.Add((& $LANG_ '  最近 7 天没有捕获到错误代码。' '  No error codes captured in the last 7 days.'))
         return $out
     }
 
@@ -1868,13 +1876,16 @@ function Get-CodeExplanationLines {
         $agoTxt = if ($ago -lt 1) { "$([math]::Round($ago * 60)) 分钟前" }
                   elseif ($ago -lt 48) { "$([math]::Round($ago)) 小时前" }
                   else { "$([math]::Round($ago / 24)) 天前" }
+        $agoTxtEn = if ($ago -lt 1) { "$([math]::Round($ago * 60)) min ago" }
+                    elseif ($ago -lt 48) { "$([math]::Round($ago)) hours ago" }
+                    else { "$([math]::Round($ago / 24)) days ago" }
 
         [void]$out.Add("  【$($info.Code)】$($info.Name)")
-        [void]$out.Add("      记录：出现 $($e.Count) 次，最近一次 $($e.Last.ToString('MM-dd HH:mm'))（$agoTxt）")
-        [void]$out.Add("      来源：$($e.Source)" + $(if ($e.Provider -eq 'bench') { '（本次软件生成）' } else { "（$($e.Provider) 事件 ID $($e.EventId)）" }))
-        [void]$out.Add("      含义：$($info.Mean)")
-        [void]$out.Add("      常见原因：$($info.Cause)")
-        [void]$out.Add("      建议：$($info.Advice)")
+        [void]$out.Add((& $LANG_ "      记录：出现 $($e.Count) 次，最近一次 $($e.Last.ToString('MM-dd HH:mm'))（$agoTxt）" "      Count: $($e.Count), last seen $($e.Last.ToString('MM-dd HH:mm')) ($agoTxtEn)"))
+        [void]$out.Add((& $LANG_ ("      来源：" + $($e.Source) + $(if ($e.Provider -eq 'bench') { '（本次软件生成）' } else { "（$($e.Provider) 事件 ID $($e.EventId)）" })) ("      Source: " + $($e.Source) + $(if ($e.Provider -eq 'bench') { ' (generated by this app)' } else { " ($($e.Provider) event ID $($e.EventId))" }))))
+        [void]$out.Add((& $LANG_ "      含义：$($info.Mean)" "      Meaning: $($info.Mean)"))
+        [void]$out.Add((& $LANG_ "      常见原因：$($info.Cause)" "      Likely cause: $($info.Cause)"))
+        [void]$out.Add((& $LANG_ "      建议：$($info.Advice)" "      Advice: $($info.Advice)"))
         [void]$out.Add('')
     }
 
@@ -1960,66 +1971,63 @@ function Get-TempProfile {
     return $result
 }
 function Get-HealthReportText {
-    $L_ = New-Object System.Collections.Generic.List[string]
+    $e = ($script:T.LanguageCode -eq 'en-US')
+    $LANG_ = { param($zh, $en) if ($e) { $en } else { $zh } }
 
+    $L_ = New-Object System.Collections.Generic.List[string]
     $now = Get-Date
     $ln = ('=' * 60)
     [void]$L_.Add($ln)
-    [void]$L_.Add("  游戏崩溃诊断器 · 诊断报告")
-    [void]$L_.Add(("  生成时间: " + $now.ToString('yyyy-MM-dd HH:mm:ss')))
+    [void]$L_.Add((& $LANG_ "  游戏崩溃诊断器 · 诊断报告" "  Game Crash Doctor - Diagnosis Report"))
+    [void]$L_.Add((& $LANG_ "  生成时间: $($now.ToString('yyyy-MM-dd HH:mm:ss'))" "  Generated: $($now.ToString('yyyy-MM-dd HH:mm:ss'))"))
     [void]$L_.Add($ln)
     [void]$L_.Add('')
 
     # ══ 1. 硬件与驱动 ══
-    [void]$L_.Add('【硬件 / 驱动】')
-    $gpuName = '未知'; $drvVer = '未知'; $drvDate = $null
+    [void]$L_.Add((& $LANG_ '【硬件 / 驱动】' '[Hardware / Driver]'))
+    $gpuName = '--'; $drvVer = '--'; $drvDate = $null
     try {
         $g = & nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>$null
         if ($g) { $parts = $g -split ','; $gpuName = $parts[0].Trim(); $drvVer = $parts[1].Trim() }
     } catch {}
     try {
         $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'NVIDIA|AMD|Radeon|Intel' } | Select-Object -First 1
-        if ($vc) {
-            if ($gpuName -eq '未知') { $gpuName = $vc.Name }
-            $drvDate = $vc.DriverDate
-        }
+        if ($vc) { if ($gpuName -eq '--') { $gpuName = $vc.Name }; $drvDate = $vc.DriverDate }
     } catch {}
-    $cpuName = try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim() } catch { '未知' }
+    $cpuName = try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim() } catch { '--' }
 
-    [void]$L_.Add("  显卡    : $gpuName")
-    [void]$L_.Add("  驱动    : $drvVer" + $(if ($drvDate) { "  (日期 $($drvDate.ToString('yyyy-MM-dd')))" } else { '' }))
-    [void]$L_.Add("  处理器  : $cpuName")
+    [void]$L_.Add((& $LANG_ "  显卡    : $gpuName" "  GPU      : $gpuName"))
+    $drvLine = if ($drvDate) { " ($($drvDate.ToString('yyyy-MM-dd')))" } else { '' }
+    [void]$L_.Add((& $LANG_ "  驱动    : $drvVer$drvLine" "  Driver   : $drvVer$drvLine"))
+    [void]$L_.Add((& $LANG_ "  处理器  : $cpuName" "  CPU      : $cpuName"))
 
-    # 驱动年龄
     if ($drvDate) {
         $ageDays = [math]::Round(($now - $drvDate).TotalDays)
         if ($ageDays -gt 365) {
-            [void]$L_.Add("  ⚠ 驱动已 $ageDays 天未更新（超过一年），建议更新到最新稳定版")
+            [void]$L_.Add((& $LANG_ "  ! 驱动已 $ageDays 天未更新（超过一年），建议更新到最新稳定版" "  ! Driver is $ageDays days old (over a year) - consider updating"))
         } elseif ($ageDays -gt 180) {
-            [void]$L_.Add("  驱动 $ageDays 天未更新，可以考虑更新")
+            [void]$L_.Add((& $LANG_ "  驱动 $ageDays 天未更新，可以考虑更新" "  Driver is $ageDays days old - updating is optional"))
         } else {
-            [void]$L_.Add("  驱动较新（$ageDays 天），暂无更新必要")
+            [void]$L_.Add((& $LANG_ "  驱动较新（$ageDays 天），暂无更新必要" "  Driver is recent ($ageDays days) - no update needed"))
         }
     }
 
-    # DirectX
     $dxVer = $null
     try { $dxVer = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\DirectX' -Name Version -ErrorAction Stop).Version } catch {}
     if ($dxVer) {
-        [void]$L_.Add("  DirectX : $dxVer")
+        [void]$L_.Add((& $LANG_ "  DirectX : $dxVer" "  DirectX  : $dxVer"))
     } else {
-        [void]$L_.Add("  ⚠ 读不到 DirectX 版本，可能缺少 DX 运行库")
+        [void]$L_.Add((& $LANG_ "  ! 读不到 DirectX 版本，可能缺少 DX 运行库" "  ! Cannot read DirectX version - the runtime may be incomplete"))
     }
     $dxs = Get-DxStatus
     if ($dxs.Missing.Count -eq 0) {
-        [void]$L_.Add('  DirectX 组件 : 12 项全部齐全')
+        [void]$L_.Add((& $LANG_ '  DirectX 组件 : 12 项全部齐全' '  DirectX components : all 12 present'))
     }
     else {
-        [void]$L_.Add("  DirectX 组件 : 缺 $($dxs.Missing.Count) 项（点「修复 DirectX」可自动处理）")
-        foreach ($m in $dxs.Missing) { [void]$L_.Add("            - $($m.Name)（$($m.File)）") }
+        [void]$L_.Add((& $LANG_ "  DirectX 组件 : 缺 $($dxs.Missing.Count) 项（菜单里可一键修复）" "  DirectX components : $($dxs.Missing.Count) missing (repair from the menu)"))
+        foreach ($m in $dxs.Missing) { [void]$L_.Add((& $LANG_ "            - $($m.Name)（$($m.File)）" "            - $($m.Name) ($($m.File))")) }
     }
 
-    # 超频
     $abRun = $null -ne (Get-Process MSIAfterburner -ErrorAction SilentlyContinue)
     $abProfile = 'C:\Program Files (x86)\MSI Afterburner\Profiles'
     $abOc = $false
@@ -2030,23 +2038,27 @@ function Get-HealthReportText {
             if ($txt -match 'CoreClkBoost=(-?\d+)' -and [int]$matches[1] -ne 0) { $abOc = $true }
         }
     }
-    [void]$L_.Add("  超频软件: " + $(if ($abRun) { 'Afterburner 正在运行' } else { '未运行' }) + $(if ($abOc) { '（配置里有非零偏移）' } else { '' }))
+    $abTxt = if ($abRun) { (& $LANG_ '正在运行' 'running') } else { (& $LANG_ '未运行' 'not running') }
+    if ($abOc) { $abTxt += (& $LANG_ '（配置里有非零偏移）' ' (non-zero offset found)') }
+    [void]$L_.Add((& $LANG_ "  超频软件: $abTxt" "  Overclocking: $abTxt"))
     [void]$L_.Add('')
 
     # ══ 2. 当前状态 ══
-    [void]$L_.Add('【当前状态】')
+    [void]$L_.Add((& $LANG_ '【当前状态】' '[Current status]'))
     if ($script:LastSample) {
         $s = $script:LastSample
-        [void]$L_.Add(("  GPU : {0}°C   {1}W   {2}MHz   占用 {3}%   降频 {4}" -f $s.Temp, $s.Power, $s.ClockSm, $s.UtilGpu, $s.Throttle))
+        [void]$L_.Add((& $LANG_ ("  GPU : {0}°C   {1}W   {2}MHz   占用 {3}%   降频 {4}" -f $s.Temp, $s.Power, $s.ClockSm, $s.UtilGpu, $s.Throttle) `
+                           ("  GPU : {0}C   {1}W   {2}MHz   usage {3}%   throttle {4}" -f $s.Temp, $s.Power, $s.ClockSm, $s.UtilGpu, $s.Throttle)))
     }
     if ($script:CpuLast) {
         $cu = $script:CpuLast
-        [void]$L_.Add(("  CPU : {0}°C   {1}MHz   占用 {2}%   活跃核心 {3}/{4}" -f $cu.Temp, $cu.MHz, $cu.Load, $cu.Active, $cu.Total))
+        [void]$L_.Add((& $LANG_ ("  CPU : {0}°C   {1}MHz   占用 {2}%   活跃核心 {3}/{4}" -f $cu.Temp, $cu.MHz, $cu.Load, $cu.Active, $cu.Total) `
+                           ("  CPU : {0}C   {1}MHz   usage {2}%   active cores {3}/{4}" -f $cu.Temp, $cu.MHz, $cu.Load, $cu.Active, $cu.Total)))
     }
     [void]$L_.Add('')
 
-    # ══ 3. 遥测统计 ══
-    [void]$L_.Add('【本次记录统计】')
+    # ══ 3. 本次记录统计 ══
+    [void]$L_.Add((& $LANG_ '【本次记录统计】' '[This session]'))
     $maxT = 0; $maxP = 0; $capN = 0; $n = 0; $minC = 99999; $maxC = 0
     if ($script:LogFile -and (Test-Path $script:LogFile)) {
         foreach ($line in (Get-Content $script:LogFile | Select-Object -Skip 1)) {
@@ -2056,168 +2068,197 @@ function Get-HealthReportText {
             $tv = 0.0; $pv = 0.0; $cv = 0
             if ([double]::TryParse($a[1], [ref]$tv)) { if ($tv -gt $maxT) { $maxT = $tv } }
             if ([double]::TryParse($a[2], [ref]$pv)) { if ($pv -gt $maxP) { $maxP = $pv } }
-            if ([int]::TryParse($a[3], [ref]$cv)) {
-                if ($cv -lt $minC) { $minC = $cv }
-                if ($cv -gt $maxC) { $maxC = $cv }
-            }
+            if ([int]::TryParse($a[3], [ref]$cv)) { if ($cv -lt $minC) { $minC = $cv }; if ($cv -gt $maxC) { $maxC = $cv } }
             if ($a[10] -eq '1') { $capN++ }
         }
     }
     $capPct = if ($n -gt 0) { $capN * 100.0 / $n } else { 0 }
     if ($n -gt 0) {
-        [void]$L_.Add(("  采样 {0:N0} 条   最高温度 {1:N1}°C   最高功耗 {2:N0}W" -f $n, $maxT, $maxP))
-        [void]$L_.Add(("  核心频率 {0:N0} ~ {1:N0} MHz   撞功耗墙 {2:N0}% 的采样" -f $minC, $maxC, $capPct))
+        [void]$L_.Add((& $LANG_ ("  采样 {0:N0} 条   最高温度 {1:N1}°C   最高功耗 {2:N0}W" -f $n, $maxT, $maxP) `
+                           ("  Samples {0:N0}   max temp {1:N1}C   max power {2:N0}W" -f $n, $maxT, $maxP)))
+        [void]$L_.Add((& $LANG_ ("  核心频率 {0:N0} ~ {1:N0} MHz   撞功耗墙 {2:N0}% 的采样" -f $minC, $maxC, $capPct) `
+                           ("  Core clock {0:N0} ~ {1:N0} MHz   power-limited {2:N0}% of samples" -f $minC, $maxC, $capPct)))
     } else {
-        [void]$L_.Add('  （还没开始记录）')
+        [void]$L_.Add((& $LANG_ '  （还没开始记录）' '  (not recording yet)'))
     }
     [void]$L_.Add('')
 
     # ══ 4. 崩溃历史 ══
-    [void]$L_.Add('【崩溃历史】')
+    [void]$L_.Add((& $LANG_ '【崩溃历史】' '[Crash history]'))
     $crashes = @(Get-ChildItem $RepDir -Filter 'crash-*.txt' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
     $recent7 = @($crashes | Where-Object { $_.LastWriteTime -ge $now.AddDays(-7) })
-    [void]$L_.Add("  累计崩溃报告: $($crashes.Count) 份    最近 7 天: $($recent7.Count) 份")
+    [void]$L_.Add((& $LANG_ "  累计崩溃报告: $($crashes.Count) 份    最近 7 天: $($recent7.Count) 份" "  Total crash reports: $($crashes.Count)   last 7 days: $($recent7.Count)"))
     if ($crashes.Count -gt 0) {
         $crashes | Select-Object -First 5 | ForEach-Object {
-            [void]$L_.Add("    · $($_.LastWriteTime.ToString('MM-dd HH:mm'))  $($_.Name)")
+            [void]$L_.Add("    - $($_.LastWriteTime.ToString('MM-dd HH:mm'))  $($_.Name)")
         }
     }
     [void]$L_.Add('')
 
     # ══ 4.5 错误代码解读 ══
-    [void]$L_.Add('【错误代码解读】')
+    [void]$L_.Add((& $LANG_ '【错误代码解读】' '[Error code analysis]'))
     try {
         foreach ($cl in (Get-CodeExplanationLines)) { [void]$L_.Add($cl) }
     }
-    catch { [void]$L_.Add('  （读取错误码失败）') }
+    catch { [void]$L_.Add((& $LANG_ '  （读取错误码失败）' '  (failed to read error codes)')) }
     [void]$L_.Add('')
 
     # ══ 5. 温度基线对比 ══
     $tp = Get-TempProfile
-    [void]$L_.Add('【温度基线对比】')
-    [void]$L_.Add('  （判断散热好坏要拿"不玩游戏时"当基线，不能只看绝对值）')
+    [void]$L_.Add((& $LANG_ '【温度基线对比】' '[Temperature baseline]'))
+    [void]$L_.Add((& $LANG_ '  （判断散热好坏要拿"不玩游戏时"当基线，不能只看绝对值）' '  (Compare idle vs in-game: absolute numbers alone are misleading)'))
     if ($tp.IdleCount -gt 0) {
-        [void]$L_.Add(("  空闲时   CPU 均值 {0}°C  峰值 {1}°C      GPU 均值 {2}°C  峰值 {3}°C" -f $tp.IdleCpuMed, $tp.IdleCpuMax, $tp.IdleGpuMed, $tp.IdleGpuMax))
+        [void]$L_.Add((& $LANG_ ("  空闲时   CPU 均值 {0}°C  峰值 {1}°C      GPU 均值 {2}°C  峰值 {3}°C" -f $tp.IdleCpuMed, $tp.IdleCpuMax, $tp.IdleGpuMed, $tp.IdleGpuMax) `
+                           ("  Idle     CPU avg {0}C  peak {1}C      GPU avg {2}C  peak {3}C" -f $tp.IdleCpuMed, $tp.IdleCpuMax, $tp.IdleGpuMed, $tp.IdleGpuMax)))
     } else {
-        [void]$L_.Add('  空闲时   （还没有 logs\system 记录，关掉游戏跑一会儿再来看）')
+        [void]$L_.Add((& $LANG_ '  空闲时   （还没有 logs\system 记录，关掉游戏跑一会儿再来看）' '  Idle     (no logs\system data yet - run without a game for a while)'))
     }
     if ($tp.GameCount -gt 0) {
-        [void]$L_.Add(("  游戏内   CPU 均值 {0}°C  峰值 {1}°C      GPU 均值 {2}°C  峰值 {3}°C   （{4}）" -f $tp.GameCpuMed, $tp.GameCpuMax, $tp.GameGpuMed, $tp.GameGpuMax, $tp.GameName))
+        [void]$L_.Add((& $LANG_ ("  游戏内   CPU 均值 {0}°C  峰值 {1}°C      GPU 均值 {2}°C  峰值 {3}°C   （{4}）" -f $tp.GameCpuMed, $tp.GameCpuMax, $tp.GameGpuMed, $tp.GameGpuMax, $tp.GameName) `
+                           ("  In-game  CPU avg {0}C  peak {1}C      GPU avg {2}C  peak {3}C   ({4})" -f $tp.GameCpuMed, $tp.GameCpuMax, $tp.GameGpuMed, $tp.GameGpuMax, $tp.GameName)))
     } else {
-        [void]$L_.Add('  游戏内   （还没记录到游戏数据）')
+        [void]$L_.Add((& $LANG_ '  游戏内   （还没记录到游戏数据）' '  In-game  (no game data recorded yet)'))
     }
     if ($tp.IdleCount -gt 0 -and $tp.GameCount -gt 0) {
         $dCpu = $tp.GameCpuMed - $tp.IdleCpuMed
         $dGpu = $tp.GameGpuMed - $tp.IdleGpuMed
-        [void]$L_.Add(("  温升     CPU +{0}°C                        GPU +{1}°C" -f $dCpu, $dGpu))
-        # 综合评估：先看空闲是否正常，再看游戏内温升
+        [void]$L_.Add((& $LANG_ ("  温升     CPU +{0}°C                        GPU +{1}°C" -f $dCpu, $dGpu) `
+                           ("  Rise     CPU +{0}C                         GPU +{1}C" -f $dCpu, $dGpu)))
         if ($tp.IdleCpuMed -lt 68 -and $tp.GameCpuMax -lt 93 -and $tp.GameGpuMax -lt 85) {
-            [void]$L_.Add('  评估     正常 —— 空闲温度低、游戏内温升合理，散热没问题')
+            [void]$L_.Add((& $LANG_ '  评估     正常 —— 空闲温度低、游戏内温升合理，散热没问题' '  Verdict  OK - idle cool, in-game rise reasonable, cooling is fine'))
         }
         elseif ($tp.IdleCpuMed -lt 68) {
-            [void]$L_.Add('  评估     空闲正常，但游戏内偏高 —— 散热余量不足，建议限制帧率/降画质')
+            [void]$L_.Add((& $LANG_ '  评估     空闲正常，但游戏内偏高 —— 散热余量不足，建议限制帧率/降画质' '  Verdict  Idle OK but hot in game - limited thermal headroom, cap FPS or lower settings'))
         }
         else {
-            [void]$L_.Add('  评估     空闲温度就已经偏高 —— 散热本身有问题，优先处理清灰/硅脂/风道')
+            [void]$L_.Add((& $LANG_ '  评估     空闲温度就已经偏高 —— 散热本身有问题，优先处理清灰/硅脂/风道' '  Verdict  Idle is already hot - fix cooling first (dust, thermal paste, airflow)'))
         }
     }
     [void]$L_.Add('')
 
     # ══ 6. 诊断结论 ══
-    [void]$L_.Add('【诊断结论】')
+    [void]$L_.Add((& $LANG_ '【诊断结论】' '[Findings]'))
     $issues = @()
     $advice = @()
 
-    # ── 温度判断：以"空闲基线"为参照 ──
     if ($tp.IdleCount -gt 0) {
         if ($tp.IdleCpuMed -ge 75) {
-            $issues += "CPU 空闲温度偏高（均值 $($tp.IdleCpuMed)°C，正常应在 40~60°C）"
-            $advice += 'CPU 散热需要处理：检查风扇转速、硅脂是否涂匀、电源模式是否锁了高性能'
+            $issues += (& $LANG_ "CPU 空闲温度偏高（均值 $($tp.IdleCpuMed)°C，正常应在 40~60°C）" "CPU idles hot (avg $($tp.IdleCpuMed)C, expected 40-60C)")
+            $advice += (& $LANG_ 'CPU 散热需要处理：检查风扇转速、硅脂是否涂匀、电源模式是否锁了高性能' 'Fix CPU cooling: check fan curve, thermal paste, power plan')
         } elseif ($tp.IdleCpuMed -ge 68) {
-            $issues += "CPU 空闲温度略高（均值 $($tp.IdleCpuMed)°C）"
-            $advice += '留意 CPU 空闲温度，若持续上升再考虑清理散热'
+            $issues += (& $LANG_ "CPU 空闲温度略高（均值 $($tp.IdleCpuMed)°C）" "CPU idle temp slightly high (avg $($tp.IdleCpuMed)C)")
+            $advice += (& $LANG_ '留意 CPU 空闲温度，若持续上升再考虑清理散热' 'Watch the CPU idle temp; clean cooling if it keeps rising')
         }
         if ($tp.IdleGpuMed -ge 60) {
-            $issues += "GPU 空闲温度偏高（均值 $($tp.IdleGpuMed)°C，正常应在 35~50°C）"
-            $advice += 'GPU 空闲温度高通常是风扇停转策略或机箱风道问题，可检查是否开了"零风扇"模式'
+            $issues += (& $LANG_ "GPU 空闲温度偏高（均值 $($tp.IdleGpuMed)°C，正常应在 35~50°C）" "GPU idles hot (avg $($tp.IdleGpuMed)C, expected 35-50C)")
+            $advice += (& $LANG_ 'GPU 空闲温度高通常是风扇停转策略或机箱风道问题，可检查是否开了"零风扇"模式' 'High idle GPU temp usually means zero-fan mode or poor airflow')
         }
     }
     if ($tp.GameCount -gt 0) {
         $dCpu = if ($null -ne $tp.IdleCpuMed) { $tp.GameCpuMed - $tp.IdleCpuMed } else { $null }
         $dGpu = if ($null -ne $tp.IdleGpuMed) { $tp.GameGpuMed - $tp.IdleGpuMed } else { $null }
         if ($tp.GameCpuMax -ge 95) {
-            $issues += "CPU 游戏内峰值 $($tp.GameCpuMax)°C，已到笔记本安全线（95°C 以上会明显降频）"
-            $advice += '限制帧率或降低画质，减轻 CPU 负载；确认电源模式没锁在超频档'
+            $issues += (& $LANG_ "CPU 游戏内峰值 $($tp.GameCpuMax)°C，已到笔记本安全线（95°C 以上会明显降频）" "CPU peak in game $($tp.GameCpuMax)C - at the laptop limit (throttling above 95C)")
+            $advice += (& $LANG_ '限制帧率或降低画质，减轻 CPU 负载；确认电源模式没锁在超频档' 'Cap FPS or lower settings to reduce CPU load; check the power plan')
         } elseif ($tp.GameCpuMed -ge 90) {
-            $issues += "CPU 游戏内均值 $($tp.GameCpuMed)°C，长时间处于高位"
-            $advice += '把帧率限制到 60~90，能明显压低 CPU 温度'
+            $issues += (& $LANG_ "CPU 游戏内均值 $($tp.GameCpuMed)°C，长时间处于高位" "CPU averages $($tp.GameCpuMed)C in game - sustained high")
+            $advice += (& $LANG_ '把帧率限制到 60~90，能明显压低 CPU 温度' 'Limit FPS to 60-90 to bring CPU temps down')
         } elseif ($null -ne $dCpu -and $dCpu -ge 45) {
-            $issues += "CPU 游戏内温升 +$dCpu°C（空闲 $($tp.IdleCpuMed) → 游戏 $($tp.GameCpuMed)），偏高"
-            $advice += 'CPU 散热余量不足：清理风道、垫高机身、控制帧率'
+            $issues += (& $LANG_ "CPU 游戏内温升 +$dCpu°C（空闲 $($tp.IdleCpuMed) → 游戏 $($tp.GameCpuMed)），偏高" "CPU rises +$dCpuC in game ($($tp.IdleCpuMed) -> $($tp.GameCpuMed)) - high")
+            $advice += (& $LANG_ 'CPU 散热余量不足：清理风道、垫高机身、控制帧率' 'Limited CPU thermal headroom: clean airflow, raise the laptop, cap FPS')
         }
         if ($tp.GameGpuMax -ge 85) {
-            $issues += "GPU 游戏内峰值 $($tp.GameGpuMax)°C，偏高"
-            $advice += '降低功耗墙或限制帧率，改善散热通风'
+            $issues += (& $LANG_ "GPU 游戏内峰值 $($tp.GameGpuMax)°C，偏高" "GPU peak in game $($tp.GameGpuMax)C - high")
+            $advice += (& $LANG_ '降低功耗墙或限制帧率，改善散热通风' 'Lower the power limit or cap FPS; improve airflow')
         } elseif ($null -ne $dGpu -and $dGpu -ge 45) {
-            $issues += "GPU 游戏内温升 +$dGpu°C（空闲 $($tp.IdleGpuMed) → 游戏 $($tp.GameGpuMed)），偏高"
-            $advice += 'GPU 散热余量不足：清理风扇积灰、垫高机身'
+            $issues += (& $LANG_ "GPU 游戏内温升 +$dGpu°C（空闲 $($tp.IdleGpuMed) → 游戏 $($tp.GameGpuMed)），偏高" "GPU rises +$dGpuC in game ($($tp.IdleGpuMed) -> $($tp.GameGpuMed)) - high")
+            $advice += (& $LANG_ 'GPU 散热余量不足：清理风扇积灰、垫高机身' 'Limited GPU thermal headroom: clean fans, raise the laptop')
         }
     } elseif ($null -ne $maxT -and $maxT -ge 90) {
-        $issues += "本次记录 GPU 最高 $([math]::Round($maxT))°C"
-        $advice += '温度偏高，注意散热'
+        $issues += (& $LANG_ "本次记录 GPU 最高 $([math]::Round($maxT))°C" "GPU reached $([math]::Round($maxT))C this session")
+        $advice += (& $LANG_ '温度偏高，注意散热' 'High temperature - check cooling')
     }
     if ($n -gt 0 -and ($capN * 100.0 / $n) -ge 70 -and $maxP -gt 170) {
-        $issues += "长期撞功耗墙（$([math]::Round($capPct))% 采样），功耗峰值 $([math]::Round($maxP))W"
-        $advice += '降功耗：tools\power-cap.ps1 -Watts 145；或开垂直同步/限制帧率，减轻供电压力'
+        $issues += (& $LANG_ "长期撞功耗墙（$([math]::Round($capPct))% 采样），功耗峰值 $([math]::Round($maxP))W" "Power-limited most of the time ($([math]::Round($capPct))% of samples), peak $([math]::Round($maxP))W")
+        $advice += (& $LANG_ '降功耗：tools\power-cap.ps1 -Watts 145；或开垂直同步/限制帧率，减轻供电压力' 'Lower the power limit: tools\power-cap.ps1 -Watts 145, or enable V-Sync')
     }
     if ($dxs.Missing.Count -gt 0) {
-        $names = ($dxs.Missing | ForEach-Object { $_.Name }) -join '、'
-        $issues += "DirectX 缺少 $($dxs.Missing.Count) 个组件（$names）"
-        $advice += '点「修复 DirectX」按钮自动安装官方运行库；也可手动装 DirectX 最终用户运行时'
+        $names = ($dxs.Missing | ForEach-Object { $_.Name }) -join (& $LANG_ '、' ', ')
+        $issues += (& $LANG_ "DirectX 缺少 $($dxs.Missing.Count) 个组件（$names）" "DirectX is missing $($dxs.Missing.Count) component(s): $names")
+        $advice += (& $LANG_ '点「查看 / 重装 DirectX」自动安装官方运行库；也可手动装 DirectX 最终用户运行时' 'Use "View / reinstall DirectX" to install the official runtime')
     }
     if ($abOc) {
-        $issues += '检测到 Afterburner 配置里有超频偏移'
-        $advice += '关闭超频：打开 Afterburner 点 Reset，或运行 tools\apply-fixes.ps1'
+        $issues += (& $LANG_ '检测到 Afterburner 配置里有超频偏移' 'MSI Afterburner profile contains an overclock offset')
+        $advice += (& $LANG_ '关闭超频：打开 Afterburner 点 Reset，或运行 tools\apply-fixes.ps1' 'Reset the overclock in Afterburner, or run tools\apply-fixes.ps1')
     }
     if ($recent7.Count -ge 3) {
-        $issues += "最近 7 天崩了 $($recent7.Count) 次，属于高频复发"
-        $advice += '高频复发说明不是偶发：优先按散热→超频→驱动顺序逐项排除'
+        $issues += (& $LANG_ "最近 7 天崩了 $($recent7.Count) 次，属于高频复发" "$($recent7.Count) crashes in the last 7 days - frequent")
+        $advice += (& $LANG_ '高频复发说明不是偶发：优先按散热→超频→驱动顺序逐项排除' 'Not a one-off: rule out cooling, then overclocking, then drivers')
     } elseif ($recent7.Count -ge 1) {
-        $issues += "最近 7 天崩了 $($recent7.Count) 次"
+        $issues += (& $LANG_ "最近 7 天崩了 $($recent7.Count) 次" "$($recent7.Count) crash(es) in the last 7 days")
     }
     if ($drvDate -and ($now - $drvDate).TotalDays -gt 365) {
-        $issues += '驱动超过一年未更新'
-        $advice += '更新显卡驱动到游戏官方推荐的版本'
+        $issues += (& $LANG_ '驱动超过一年未更新' 'Driver has not been updated in over a year')
+        $advice += (& $LANG_ '更新显卡驱动到游戏官方推荐的版本' 'Update the GPU driver to the version recommended by the game')
     }
     if ($n -gt 0 -and $maxC -gt 0 -and ($maxC - $minC) -gt 400) {
-        $issues += "核心频率波动大（$([math]::Round($minC))~$([math]::Round($maxC)) MHz）"
-        $advice += '频率大幅抖动通常是撞温度墙或功耗墙，先解决散热再谈超频'
+        $issues += (& $LANG_ "核心频率波动大（$([math]::Round($minC))~$([math]::Round($maxC)) MHz）" "Large core clock swings ($([math]::Round($minC))~$([math]::Round($maxC)) MHz)")
+        $advice += (& $LANG_ '频率大幅抖动通常是撞温度墙或功耗墙，先解决散热再谈超频' 'Big clock swings usually mean thermal or power limits - fix cooling first')
     }
 
     if ($issues.Count -eq 0) {
-        [void]$L_.Add('  ✅ 各项指标正常，没发现明显问题')
+        [void]$L_.Add((& $LANG_ '  没有发现明显问题' '  No obvious problems found'))
     } else {
         $i = 1
         foreach ($x in $issues) { [void]$L_.Add("  $i. $x"); $i++ }
     }
     [void]$L_.Add('')
 
-    [void]$L_.Add('【建议】')
+    [void]$L_.Add((& $LANG_ '【建议】' '[Suggestions]'))
     if ($advice.Count -eq 0) {
-        [void]$L_.Add('  · 继续观察；如果再次崩溃，回来点「诊断」查看新数据')
-        [void]$L_.Add('  · 崩溃后请保留 reports\ 目录里的报告')
+        [void]$L_.Add((& $LANG_ '  · 继续观察；如果再次崩溃，回来点「诊断报告」查看新数据' '  - Keep monitoring; run the diagnosis again after the next crash'))
+        [void]$L_.Add((& $LANG_ '  · 崩溃后请保留 reports\ 目录里的报告' '  - Keep the reports\ folder for reference'))
     } else {
         $i = 1
         foreach ($x in $advice) { [void]$L_.Add("  $i. $x"); $i++ }
     }
     [void]$L_.Add('')
-    [void]$L_.Add('提示：以上是程序基于遥测数据的自动判断，供参考。')
-    [void]$L_.Add('      若多次出现同类问题，建议把 reports 目录的报告一起提供给懂行的人。')
+    [void]$L_.Add((& $LANG_ '提示：以上是程序基于遥测数据的自动判断，供参考。' 'Note: these findings are rule-based guesses from telemetry, for reference only.'))
+    [void]$L_.Add((& $LANG_ '      若多次出现同类问题，建议把 reports 目录的报告一起提供给懂行的人。' '      If the same issue keeps happening, share the reports\ files with someone experienced.'))
 
     return $L_
 }
-
 function Show-AboutDialog {
+    $aboutEn = @(
+        ("Game Crash Doctor  " + $script:AppVersion),
+        "",
+        "[What it is]",
+        "A lightweight local monitor and crash forensics tool. While a game runs it records GPU and CPU temperature, power, clocks and usage; after a crash it produces a report you can actually read.",
+        "",
+        "[Why it exists]",
+        "It started as a way to debug DXGI_ERROR_DEVICE_HUNG crashes in Battlefield 6. After digging through hundreds of crash dumps, driver events and telemetry logs, most problems fell into three buckets: unstable overclocking, insufficient thermal headroom, and driver/OS mismatch. This tool automates that workflow.",
+        "",
+        "[What it does]",
+        "- Live monitoring of 12 GPU/CPU metrics with trend charts; hover to read exact values and time",
+        "- Detects any fullscreen game automatically and records into logs\<game>\; up to 24h of history",
+        "- Generates a crash report with verdict, error code explanations and temperature baseline comparison",
+        "- Built-in explanations for 25 common error codes (DXGI, bugchecks, driver events)",
+        "- DirectX component check with one-click repair",
+        "- Everything stays local: no network, no uploads, no injection into the game",
+        "",
+        "[Who it is for]",
+        "Players who see crashes, freezes or artifacts and cannot read a dump file. Reports are plain text - paste them into a forum or send them to a friend.",
+        "",
+        "[About the findings]",
+        "Diagnosis is rule-based reasoning over telemetry, not a professional repair service. If the same issue keeps happening, combine the report with official support or a repair shop.",
+        "",
+        "[Source]",
+        "GitHub: (to be added)",
+        "",
+        "This tool only monitors and collects evidence. It does not modify game files."
+    )
+
+
     $about = @(
         ('游戏崩溃诊断器  GameCrashDiag  ' + $script:AppVersion),
         '',
@@ -2248,7 +2289,7 @@ function Show-AboutDialog {
     )
 
     $dlg = New-Object System.Windows.Forms.Form
-    $dlg.Text = '关于 游戏崩溃诊断器'
+    $dlg.Text = $script:T.AboutTitle
     $dlg.Size = New-Object System.Drawing.Size(660, 580)
     $dlg.StartPosition = 'CenterParent'
     $dlg.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
@@ -2267,7 +2308,7 @@ function Show-AboutDialog {
     $tb.ForeColor = [System.Drawing.Color]::FromArgb(214, 216, 222)
     $tb.BorderStyle = 'None'
     $tb.Font = New-Object System.Drawing.Font('微软雅黑', 9.5)
-    $tb.Text = ($about -join "`r`n")
+    $tb.Text = if ($script:T.LanguageCode -eq 'en-US') { ($aboutEn -join "`r`n") } else { ($about -join "`r`n") }
     $tb.SelectionStart = 0
     $tb.SelectionLength = 0
     $tb.ScrollToCaret()
@@ -2278,7 +2319,7 @@ function Show-AboutDialog {
     $panel.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
 
     $btnOk = New-Object System.Windows.Forms.Button
-    $btnOk.Text = '关闭'
+    $btnOk.Text = $script:T.BtnClose
     $btnOk.Size = New-Object System.Drawing.Size(132, 32)
     $btnOk.Location = New-Object System.Drawing.Point(492, 8)
     $btnOk.FlatStyle = 'Flat'
@@ -2288,7 +2329,7 @@ function Show-AboutDialog {
     $btnOk.Add_Click({ $dlg.Close() })
 
     $btnCopy = New-Object System.Windows.Forms.Button
-    $btnCopy.Text = '复制诊断摘要'
+    $btnCopy.Text = $script:T.BtnCopy
     $btnCopy.Size = New-Object System.Drawing.Size(132, 32)
     $btnCopy.Location = New-Object System.Drawing.Point(348, 8)
     $btnCopy.FlatStyle = 'Flat'
@@ -2334,7 +2375,7 @@ function Show-AboutDialog {
 function Show-DiagnosisWindow {
     $lines = Get-HealthReportText
     $dlg = New-Object System.Windows.Forms.Form
-    $dlg.Text = '诊断报告 - 游戏崩溃诊断器'
+    $dlg.Text = $script:T.DiagTitle
     try { $dlg.Icon = $form.Icon } catch {}
     $dlg.Size = New-Object System.Drawing.Size(700, 620)
     $dlg.StartPosition = 'CenterParent'
