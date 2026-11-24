@@ -23,6 +23,7 @@ param(
     [int]$ShowAfter = 0,
     [switch]$TestReport,
     [switch]$TestDiagnosis,
+    [switch]$TestView,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -598,6 +599,37 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
+# ── 曲线视图控件：时段 / 左右翻页 / 回到最新 ──
+function New-ViewButton($x, $w, $text) {
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $text
+    $b.Size = New-Object System.Drawing.Size($w, 24)
+    $b.Location = New-Object System.Drawing.Point($x, 576)
+    $b.FlatStyle = 'Flat'
+    $b.Font = $FontSmall
+    $b.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+    $b.ForeColor = $C.Text
+    $b.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+    $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(46, 46, 54)
+    $form.Controls.Add($b)
+    $b.BringToFront()
+    return $b
+}
+$btnPrev  = New-ViewButton 500 34 '◀'
+$btnNext  = New-ViewButton 540 34 '▶'
+$btnLive  = New-ViewButton 580 58 '最新'
+$btnRange = New-ViewButton 644 104 '10 分钟'
+
+$btnPrev.Add_Click({ Shift-View 1 })
+$btnNext.Add_Click({ Shift-View -1 })
+$btnLive.Add_Click({ Reset-View })
+$btnRange.Add_Click({
+    $cycle = @(2, 10, 30, 60, 360, 1440)
+    $cur = [array]::IndexOf($cycle, $script:ViewSpanMin)
+    $next = $cycle[($cur + 1) % $cycle.Count]
+    Set-ViewSpan $next
+    $btnRange.Text = if ($next -ge 60) { "{0} 小时" -f [math]::Round($next / 60, 0) } else { "$next 分钟" }
+})
 $lblDx = New-Object System.Windows.Forms.Label
 $lblDx.Text = 'DirectX 运行库：检查中…'
 $lblDx.Font = $FontSmall
@@ -618,8 +650,9 @@ $btnDxFix.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(96, 96, 
 $btnDxFix.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(46, 46, 54)
 $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
+$btnDxFix.BringToFront()
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.0   数据目录: $Root"
+$lblVer.Text = "v4.1   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 646)
@@ -635,7 +668,10 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:MaxPoints  = [math]::Max(1000, [int](3000000 / [math]::Max(100, $IntervalMs)))          # 曲线缓存点数（1 秒 1 点 ≈ 2.8 小时）
+$script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
+$script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
+$script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
+$script:ViewShiftPts = 0                        # 距最新数据的偏移点数，0 = 跟随最新
 $script:HistTime   = New-Object 'System.Collections.Generic.List[datetime]'
 $script:TempHist   = New-Object 'System.Collections.Generic.List[double]'
 $script:PowerHist  = New-Object 'System.Collections.Generic.List[double]'
@@ -900,6 +936,64 @@ function Ensure-ChartBitmaps {
     return $true
 }
 
+function Get-ViewRange {
+    <# 计算当前图表窗口在历史里的起点/终点（0-based，不含终点） #>
+    $cnt = $script:TempHist.Count
+    if ($cnt -le 0) { return @{ From = 0; To = 0; Count = 0; Shift = 0; Span = 0 } }
+
+    $span = [int]$script:ViewSpanPts
+    if ($span -le 0 -or $span -gt $cnt) { $span = $cnt }
+
+    $shift = [int]$script:ViewShiftPts
+    if ($shift -lt 0) { $shift = 0 }
+    $maxShift = [math]::Max(0, $cnt - $span)
+    if ($shift -gt $maxShift) { $shift = $maxShift }
+
+    $to = $cnt - $shift
+    $from = $to - $span
+    if ($from -lt 0) { $from = 0 }
+    return @{ From = $from; To = $to; Count = ($to - $from); Shift = $shift; Span = $span }
+}
+
+function Get-Slice([object]$list, $range) {
+    <# 从 List 里截取 [From, To) 段，返回数组 #>
+    if ($list -eq $null -or $list.Count -eq 0) { return @() }
+    $n = $list.Count
+    $from = [math]::Max(0, [math]::Min($range.From, $n))
+    $to = [math]::Max($from, [math]::Min($range.To, $n))
+    $len = $to - $from
+    if ($len -le 0) { return @() }
+    $arr = New-Object 'double[]' $len
+    $list.CopyTo($from, $arr, 0, $len)
+    return $arr
+}
+
+function Set-ViewSpan([int]$minutes) {
+    $script:ViewSpanMin = $minutes
+    $script:ViewSpanPts = [int]($minutes * 60.0 / ($script:IntervalMs / 1000.0))
+    $script:ViewShiftPts = 0
+    $script:GpuHover = -1
+    $script:CpuHover = -1
+    Draw-Chart
+}
+
+function Shift-View([int]$delta) {
+    <# 正值 = 往更早的数据翻（像往左拖） #>
+    $r = Get-ViewRange
+    $step = [math]::Max(1, [int]($r.Span / 4))
+    $script:ViewShiftPts = [math]::Max(0, [math]::Min($script:TempHist.Count - $r.Span, $script:ViewShiftPts + $delta * $step))
+    $script:GpuHover = -1
+    $script:CpuHover = -1
+    Draw-Chart
+}
+
+function Reset-View {
+    $script:ViewShiftPts = 0
+    $script:GpuHover = -1
+    $script:CpuHover = -1
+    Draw-Chart
+}
+
 function Draw-Chart {
     if ($null -eq $script:TempHist -or $script:TempHist.Count -lt 1) { return }
     if (-not (Ensure-ChartBitmaps)) { return }
@@ -1021,7 +1115,12 @@ function Update-UI {
         if ($null -ne $s.UtilGpu) { [void]$script:TempHist.Add($s.UtilGpu) } else { [void]$script:TempHist.Add(0) }
         if ($null -ne $s.MemUsed) { [void]$script:PowerHist.Add($s.MemUsed) } else { [void]$script:PowerHist.Add(0) }
     }
-    while ($script:TempHist.Count -gt $script:MaxPoints) { $script:TempHist.RemoveAt(0) }
+    if ($script:TempHist.Count -gt ($script:MaxPoints + 600)) {
+        $drop = $script:TempHist.Count - $script:MaxPoints
+        $script:TempHist.RemoveRange(0, $drop)
+        $script:PowerHist.RemoveRange(0, [math]::Min($drop, $script:PowerHist.Count))
+        if ($script:HistTime.Count -ge $drop) { $script:HistTime.RemoveRange(0, $drop) }
+    }
     while ($script:HistTime.Count -gt $script:MaxPoints) { $script:HistTime.RemoveAt(0) }
     while ($script:PowerHist.Count -gt $script:MaxPoints) { $script:PowerHist.RemoveAt(0) }
 
@@ -1029,7 +1128,12 @@ function Update-UI {
     [void]$script:CpuHistTime.Add((Get-Date))
     [void]$script:CpuTempHist.Add([double]$script:LastCpuTemp)
     [void]$script:CpuFreqHist.Add([double]$script:LastCpuFreq)
-    while ($script:CpuTempHist.Count -gt $script:MaxPoints) { $script:CpuTempHist.RemoveAt(0) }
+    if ($script:CpuTempHist.Count -gt ($script:MaxPoints + 600)) {
+        $cdrop = $script:CpuTempHist.Count - $script:MaxPoints
+        $script:CpuTempHist.RemoveRange(0, $cdrop)
+        $script:CpuFreqHist.RemoveRange(0, [math]::Min($cdrop, $script:CpuFreqHist.Count))
+        if ($script:CpuHistTime.Count -ge $cdrop) { $script:CpuHistTime.RemoveRange(0, $cdrop) }
+    }
     while ($script:CpuHistTime.Count -gt $script:MaxPoints) { $script:CpuHistTime.RemoveAt(0) }
     while ($script:CpuFreqHist.Count -gt $script:MaxPoints) { $script:CpuFreqHist.RemoveAt(0) }
 
@@ -1174,6 +1278,16 @@ function Show-HoverTip([string]$which, $ctrl, [int]$x, [int]$y = 10) {
     }
 }
 
+$chart.Add_MouseWheel({
+    param($s, $e)
+    if ($e.Delta -gt 0) { Shift-View 1 } else { Shift-View -1 }
+})
+$cpuChart.Add_MouseWheel({
+    param($s, $e)
+    if ($e.Delta -gt 0) { Shift-View 1 } else { Shift-View -1 }
+})
+$chart.Add_DoubleClick({ Reset-View })
+$cpuChart.Add_DoubleClick({ Reset-View })
 $chart.Add_MouseMove({ param($s, $e) Show-HoverTip 'gpu' $s $e.X $e.Y })
 $chart.Add_MouseLeave({
     $script:GpuHover = -1
@@ -1315,7 +1429,7 @@ try {
 catch { }
 
 # ── 单实例保护：重复点图标只保留一个实例 ──
-if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport)) {
+if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
         # 已有实例：写信号文件让它把窗口弹出来，然后静默退出
@@ -2206,6 +2320,34 @@ if ($TestDiagnosis) {
     Start-Logging 'system'
     for ($i = 0; $i -lt 4; $i++) { Update-UI; Start-Sleep -Milliseconds 350 }
     Get-HealthReportText | ForEach-Object { Write-Output $_ }
+    exit 0
+}
+if ($TestView) {
+    # 灌 3000 个合成点，验证窗口计算
+    for ($i = 0; $i -lt 3000; $i++) {
+        [void]$script:TempHist.Add(50 + ($i % 10))
+        [void]$script:PowerHist.Add(100 + ($i % 20))
+        [void]$script:HistTime.Add((Get-Date).AddSeconds(-($3000 - $i) * 0.5))
+        [void]$script:CpuTempHist.Add(60 + ($i % 8))
+        [void]$script:CpuFreqHist.Add(3000 + ($i % 100))
+        [void]$script:CpuHistTime.Add((Get-Date).AddSeconds(-($3000 - $i) * 0.5))
+    }
+    $script:IntervalMs = 500
+    Set-ViewSpan 10
+    $r = Get-ViewRange
+    Write-Output ("窗口默认: from={0} to={1} count={2} shift={3}" -f $r.From, $r.To, $r.Count, $r.Shift)
+    Shift-View 1
+    $r = Get-ViewRange
+    Write-Output ("左移一次: from={0} to={1} count={2} shift={3}" -f $r.From, $r.To, $r.Count, $r.Shift)
+    Shift-View 5
+    $r = Get-ViewRange
+    Write-Output ("再左移5次: from={0} to={1} shift={2} (应被夹在 {3})" -f $r.From, $r.To, $r.Shift, (3000 - $r.Span))
+    Reset-View
+    $r = Get-ViewRange
+    Write-Output ("重置最新: from={0} to={1} shift={2}" -f $r.From, $r.To, $r.Shift)
+    Set-ViewSpan 30
+    $r = Get-ViewRange
+    Write-Output ("切到30分钟: count={0} (期望 3600 被裁到 3000)" -f $r.Count)
     exit 0
 }
 if ($Minimized) {
