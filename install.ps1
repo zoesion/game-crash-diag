@@ -67,7 +67,7 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 foreach ($sub in 'logs','reports','backup') {
     New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir $sub) | Out-Null
 }
-$files = @('GameCrashDiag.ps1','ChartRenderer.cs','启动诊断器.vbs','调试启动.cmd','app.ico','README.md')
+$files = @('GameCrashDiag.ps1','ChartRenderer.cs','启动诊断器.vbs','自启-托盘.vbs','调试启动.cmd','app.ico','README.md')
 foreach ($f in $files) {
     $p = Join-Path $src $f
     if (Test-Path $p) { Copy-WithRetry $p $InstallDir | Out-Null }

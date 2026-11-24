@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.68'
+$script:AppVersion = 'v5.69'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -679,9 +679,16 @@ function Test-AutoStart {
 function Set-AutoStart([bool]$enable) {
     try {
         if ($enable) {
-            $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-            $appPath = Join-Path $Root 'GameCrashDiag.ps1'
-            $cmd = "`"$psExe`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$appPath`" -Tray -IntervalMs 500"
+            # 用 wscript 启动，避免开机时 PowerShell 控制台窗口闪一下
+            $vbs = Join-Path $Root '自启-托盘.vbs'
+            if (Test-Path $vbs) {
+                $wsExe = Join-Path $env:WINDIR 'System32\wscript.exe'
+                $cmd = "`"$wsExe`" `"$vbs`""
+            } else {
+                $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+                $appPath = Join-Path $Root 'GameCrashDiag.ps1'
+                $cmd = "`"$psExe`" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$appPath`" -Tray -IntervalMs 500"
+            }
             New-ItemProperty -Path $script:RunKey -Name $script:RunName -Value $cmd -PropertyType String -Force | Out-Null
         }
         else {
