@@ -618,13 +618,14 @@ function New-ViewButton($x, $w, $text) {
 $btnPrev  = New-ViewButton 500 34 '◀'
 $btnNext  = New-ViewButton 540 34 '▶'
 $btnLive  = New-ViewButton 580 58 '最新'
-$btnRange = New-ViewButton 644 104 '10 分钟'
+$btnRange = New-ViewButton 644 104 '5 分钟'
 
 $btnPrev.Add_Click({ Shift-View 1 })
 $btnNext.Add_Click({ Shift-View -1 })
 $btnLive.Add_Click({ Reset-View })
+$script:BtnRange = $btnRange
 $btnRange.Add_Click({
-    $cycle = @(2, 10, 30, 60, 360, 1440)
+    $cycle = @(1, 5, 15, 30, 60, 360, 1440)
     $cur = [array]::IndexOf($cycle, $script:ViewSpanMin)
     $next = $cycle[($cur + 1) % $cycle.Count]
     Set-ViewSpan $next
@@ -652,7 +653,7 @@ $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
 $btnDxFix.BringToFront()
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.1   数据目录: $Root"
+$lblVer.Text = "v4.2   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 646)
@@ -669,8 +670,8 @@ $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
-$script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
-$script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
+$script:ViewSpanMin  = 5                        # 当前窗口跨度（分钟）
+$script:ViewSpanPts  = 600                      # 由 ViewSpanMin 换算，见下方初始化
 $script:ViewShiftPts = 0                        # 距最新数据的偏移点数，0 = 跟随最新
 $script:HistTime   = New-Object 'System.Collections.Generic.List[datetime]'
 $script:TempHist   = New-Object 'System.Collections.Generic.List[double]'
@@ -987,6 +988,19 @@ function Shift-View([int]$delta) {
     Draw-Chart
 }
 
+function Zoom-View([int]$dir) {
+    <# dir=+1 放大（跨度变小），dir=-1 缩小 #>
+    $cycle = @(1, 5, 15, 30, 60, 360, 1440)
+    $cur = [array]::IndexOf($cycle, [int]$script:ViewSpanMin)
+    if ($cur -lt 0) { $cur = 1 }
+    $next = $cur - $dir
+    if ($next -lt 0) { $next = 0 }
+    if ($next -ge $cycle.Count) { $next = $cycle.Count - 1 }
+    Set-ViewSpan $cycle[$next]
+    if ($script:BtnRange -and $script:BtnRange.Parent) {
+        $script:BtnRange.Text = if ($cycle[$next] -ge 60) { "{0} 小时" -f [math]::Round($cycle[$next] / 60, 0) } else { "$($cycle[$next]) 分钟" }
+    }
+}
 function Reset-View {
     $script:ViewShiftPts = 0
     $script:GpuHover = -1
@@ -1280,11 +1294,11 @@ function Show-HoverTip([string]$which, $ctrl, [int]$x, [int]$y = 10) {
 
 $chart.Add_MouseWheel({
     param($s, $e)
-    if ($e.Delta -gt 0) { Shift-View 1 } else { Shift-View -1 }
+    if ($e.Delta -gt 0) { Zoom-View 1 } else { Zoom-View -1 }
 })
 $cpuChart.Add_MouseWheel({
     param($s, $e)
-    if ($e.Delta -gt 0) { Shift-View 1 } else { Shift-View -1 }
+    if ($e.Delta -gt 0) { Zoom-View 1 } else { Zoom-View -1 }
 })
 $chart.Add_DoubleClick({ Reset-View })
 $cpuChart.Add_DoubleClick({ Reset-View })
