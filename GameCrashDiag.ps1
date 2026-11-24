@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.69'
+$script:AppVersion = 'v5.70'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -262,6 +262,7 @@ try {
 # 预热：性能计数器第一次 NextValue 返回 0
 try { $null = $script:PcPerf.NextValue(); $null = $script:PcTime.NextValue(); $null = $script:PcUtil.NextValue(); $null = $script:PcMem.NextValue()
       foreach ($c0 in $script:PcCores) { $null = $c0.NextValue() } } catch {}
+$script:LastActiveCores = 0
 $script:CpuTempCache = $null
 $script:CpuTempCacheAt = $null
 
@@ -282,9 +283,24 @@ function Get-CpuSample {
     try {
         if ($script:PcCores.Count -gt 0) {
             $active = 0
-            foreach ($cc in $script:PcCores) { if ($cc.NextValue() -gt 20) { $active++ } }
+            $maxCore = 0.0
+            $readFail = $false
+            foreach ($cc in $script:PcCores) {
+                try {
+                    $v = $cc.NextValue()
+                    if ($v -gt $maxCore) { $maxCore = $v }
+                    if ($v -gt 20) { $active++ }
+                } catch { $readFail = $true }
+            }
             $s.Total = $script:PcCores.Count
+            # 计数器偶发全 0 或个别核心读取失败时，沿用上一次的有效值，避免闪 0
+            if ($active -eq 0 -and ($readFail -or $maxCore -le 0.5) -and $script:LastActiveCores -gt 0) {
+                $active = $script:LastActiveCores
+            }
+            # 系统始终有内核活动，活跃核心不可能是 0
+            if ($active -lt 1) { $active = 1 }
             $s.Active = $active
+            $script:LastActiveCores = $active
         }
     } catch {}
 
@@ -1565,7 +1581,7 @@ if ($UiTest) {
     Update-UI
     Write-Output "UI 自检通过"
     Write-Output "  控件数: $($form.Controls.Count)"
-    Write-Output "  采样值: 温度=$($valTemp.Text) 功耗=$($valPower.Text) 频率=$($valClock.Text) 占用=$($valUtil.Text)"
+    Write-Output "  采样值: 温度=$($valTemp.Text) 功耗=$($valPower.Text) 频率=$($valClock.Text) 占用=$($valUtil.Text) 活跃核心=$($valCpuCores.Text)"
     Write-Output "  记录中: $($script:Recording)   条数: $($script:LogCount)"
     Write-Output "  日志文件: $($script:LogFile)"
     $form.Dispose()
