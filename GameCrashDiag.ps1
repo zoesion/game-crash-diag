@@ -414,6 +414,18 @@ $valPower = Add-BigValue $cardPower 'v'
 $valClock = Add-BigValue $cardClock 'v'
 $valUtil  = Add-BigValue $cardUtil  'v'
 
+$script:UnitLabels = New-Object System.Collections.Generic.List[object]
+function New-UnitLabel($card, $text) {
+    $u = New-Object System.Windows.Forms.Label
+    $u.Text = $text
+    $u.Font = $FontSmall
+    $u.ForeColor = $C.Dim
+    $u.AutoSize = $true
+    $u.Location = New-Object System.Drawing.Point(140, 12)
+    $card.Controls.Add($u)
+    $script:UnitLabels.Add([pscustomobject]@{ Label = $u; Card = $card })
+    return $u
+}
 $unitTemp  = New-Object System.Windows.Forms.Label
 $unitTemp.Text = '°C'; $unitTemp.Font = $FontSmall; $unitTemp.ForeColor = $C.Dim
 $unitTemp.Location = New-Object System.Drawing.Point(146, 12); $unitTemp.AutoSize = $true
@@ -658,7 +670,7 @@ $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
 $btnDxFix.BringToFront()
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.6   数据目录: $Root"
+$lblVer.Text = "v4.7   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 614)
@@ -674,7 +686,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:AppVersion = 'v4.6'
+$script:AppVersion = 'v4.7'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -1440,6 +1452,15 @@ try {
     foreach ($l in @($lblSub, $lblCpuModel, $lblDetail, $lblStats, $lblHint, $lblDx, $lblVer)) {
         if ($l) { $l.Left = $M; $l.Width = $inner }
     }
+    # 卡片内单位标签统一右对齐
+    try {
+        foreach ($item in $script:UnitLabels) {
+            $w = $item.Card.Width - $item.Label.PreferredWidth - [int](14 * $script:DpiScale)
+            if ($w -lt 0) { $w = 0 }
+            $item.Label.Left = $w
+        }
+    }
+    catch { }
     $lblTitle.Left = [int](44 * $script:DpiScale)
     $lblDx.Width = [int](540 * $script:DpiScale)
 

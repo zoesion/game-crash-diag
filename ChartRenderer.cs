@@ -23,7 +23,7 @@ public static class ChartRenderer
         using (SolidBrush brushDim = new SolidBrush(dim))
         using (SolidBrush brushA = new SolidBrush(colorA))
         using (SolidBrush brushB = new SolidBrush(colorB))
-        using (Font font = new Font("Microsoft YaHei", 8f))
+        using (Font font = new Font("Microsoft YaHei", 9f))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
