@@ -332,7 +332,7 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = '游戏崩溃诊断器'
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
-$form.Size = New-Object System.Drawing.Size(760, 734)
+$form.Size = New-Object System.Drawing.Size(760, 744)
 $form.MinimumSize = New-Object System.Drawing.Size(680, 660)
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $C.Bg
@@ -431,7 +431,7 @@ $unitUtil.Location = New-Object System.Drawing.Point(150, 12); $unitUtil.AutoSiz
 $cardUtil.Controls.Add($unitUtil)
 
 # ── 曲线图 ──
-$chartW, $chartH = 748, 120
+$chartW, $chartH = 748, 108
 $chart = New-Object System.Windows.Forms.PictureBox
 $chart.Location = New-Object System.Drawing.Point(6, 146)
 $chart.Size = New-Object System.Drawing.Size($chartW, $chartH)
@@ -443,7 +443,7 @@ $chart.Image = $null
 
 # ── CPU 走势图 ──
 $cpuChart = New-Object System.Windows.Forms.PictureBox
-$cpuChart.Location = New-Object System.Drawing.Point(6, 368)
+$cpuChart.Location = New-Object System.Drawing.Point(6, 358)
 $cpuChart.Size = New-Object System.Drawing.Size($chartW, 110)
 $cpuChart.BackColor = $C.Card
 $form.Controls.Add($cpuChart)
@@ -460,15 +460,15 @@ $lblCpuModel = New-Object System.Windows.Forms.Label
 $lblCpuModel.Text = "CPU  ·  $cpuNameTxt    $cpuCoreTxt"
 $lblCpuModel.Font = $FontMid
 $lblCpuModel.ForeColor = $C.Dim
-$lblCpuModel.Location = New-Object System.Drawing.Point(8, 268)
+$lblCpuModel.Location = New-Object System.Drawing.Point(8, 258)
 $lblCpuModel.AutoSize = $true
 $form.Controls.Add($lblCpuModel)
 
 # ── CPU 四个卡片 ──
-$cardCpuTemp  = New-Card 6   288 178 74 'CPU 温度'
-$cardCpuClock = New-Card 196 288 178 74 'CPU 频率'
-$cardCpuUtil  = New-Card 386 288 178 74 'CPU 占用'
-$cardCpuCores = New-Card 576 288 178 74 '活跃核心'
+$cardCpuTemp  = New-Card 6   278 178 74 'CPU 温度'
+$cardCpuClock = New-Card 196 278 178 74 'CPU 频率'
+$cardCpuUtil  = New-Card 386 278 178 74 'CPU 占用'
+$cardCpuCores = New-Card 576 278 178 74 '活跃核心'
 
 $valCpuTemp  = Add-BigValue $cardCpuTemp  'v'
 $valCpuClock = Add-BigValue $cardCpuClock 'v'
@@ -490,11 +490,32 @@ foreach ($pair in @(
 }
 
 # ── 底部信息 ──
+# ── 时间轴滚动条（浏览器样式，自动跟随最新）──
+$script:FollowLive = $true
+$script:HistBar = New-Object System.Windows.Forms.HScrollBar
+$script:HistBar.Location = New-Object System.Drawing.Point(6, 468)
+$script:HistBar.Size = New-Object System.Drawing.Size(748, 16)
+$script:HistBar.SmallChange = 60
+$script:HistBar.LargeChange = 600
+$script:HistBar.Minimum = 0
+$script:HistBar.Maximum = 0
+$script:HistBar.Visible = $false
+$script:HistBar.Add_Scroll({
+    $maxV = $script:HistBar.Maximum - $script:HistBar.LargeChange + 1
+    if ($maxV -lt 0) { $maxV = 0 }
+    $v = [math]::Max(0, [math]::Min($script:HistBar.Value, $maxV))
+    $script:ViewShiftPts = $maxV - $v
+    $script:FollowLive = ($script:ViewShiftPts -le 0)
+    $script:GpuHover = -1
+    $script:CpuHover = -1
+    Draw-Chart
+})
+$form.Controls.Add($script:HistBar)
 $lblDetail = New-Object System.Windows.Forms.Label
 $lblDetail.Text = 'CPU -- / -- / --      显存 -- / -- MB      降频 --'
 $lblDetail.Font = $FontSmall
 $lblDetail.ForeColor = $C.Dim
-$lblDetail.Location = New-Object System.Drawing.Point(6, 486)
+$lblDetail.Location = New-Object System.Drawing.Point(6, 496)
 $lblDetail.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblDetail)
 
@@ -502,7 +523,7 @@ $lblStats = New-Object System.Windows.Forms.Label
 $lblStats.Text = '本次未记录'
 $lblStats.Font = $FontSmall
 $lblStats.ForeColor = $C.Dim
-$lblStats.Location = New-Object System.Drawing.Point(6, 508)
+$lblStats.Location = New-Object System.Drawing.Point(6, 516)
 $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
@@ -544,7 +565,7 @@ $chkAutoStart.Font = $FontBody
 $chkAutoStart.ForeColor = $C.Dim
 $chkAutoStart.AutoSize = $true
 $chkAutoStart.Cursor = [System.Windows.Forms.Cursors]::Hand
-$chkAutoStart.Location = New-Object System.Drawing.Point(620, 539)
+$chkAutoStart.Location = New-Object System.Drawing.Point(620, 547)
 $form.Controls.Add($chkAutoStart)
 
 $lblMem = New-Object System.Windows.Forms.Label
@@ -552,7 +573,7 @@ $lblMem.Text = '程序内存 -- MB'
 $lblMem.Font = $FontVer
 $lblMem.ForeColor = [System.Drawing.Color]::FromArgb(110, 110, 120)
 $lblMem.AutoSize = $true
-$lblMem.Location = New-Object System.Drawing.Point(622, 561)
+$lblMem.Location = New-Object System.Drawing.Point(622, 569)
 $form.Controls.Add($lblMem)
 
 $chkAutoStart.Add_CheckedChanged({
@@ -594,55 +615,23 @@ $lblHint = New-Object System.Windows.Forms.Label
 $lblHint.Text = '提示：游戏启动自动记录，退出/崩溃自动生成报告；鼠标移到曲线上可查看该点数值。'
 $lblHint.Font = $FontSmall
 $lblHint.ForeColor = $C.Dim
-$lblHint.Location = New-Object System.Drawing.Point(6, 578)
+$lblHint.Location = New-Object System.Drawing.Point(6, 586)
 $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
-# ── 曲线视图控件：时段 / 左右翻页 / 回到最新 ──
-function New-ViewButton($x, $w, $text) {
-    $b = New-Object System.Windows.Forms.Button
-    $b.Text = $text
-    $b.Size = New-Object System.Drawing.Size($w, 24)
-    $b.Location = New-Object System.Drawing.Point($x, 576)
-    $b.FlatStyle = 'Flat'
-    $b.Font = $FontSmall
-    $b.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
-    $b.ForeColor = $C.Text
-    $b.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
-    $b.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(46, 46, 54)
-    $form.Controls.Add($b)
-    $b.BringToFront()
-    return $b
-}
-$btnPrev  = New-ViewButton 500 34 '◀'
-$btnNext  = New-ViewButton 540 34 '▶'
-$btnLive  = New-ViewButton 580 58 '最新'
-$btnRange = New-ViewButton 644 104 '5 分钟'
-
-$btnPrev.Add_Click({ Shift-View 1 })
-$btnNext.Add_Click({ Shift-View -1 })
-$btnLive.Add_Click({ Reset-View })
-$script:BtnRange = $btnRange
-$btnRange.Add_Click({
-    $cycle = @(1, 5, 15, 30, 60, 360, 1440)
-    $cur = [array]::IndexOf($cycle, $script:ViewSpanMin)
-    $next = $cycle[($cur + 1) % $cycle.Count]
-    Set-ViewSpan $next
-    $btnRange.Text = if ($next -ge 60) { "{0} 小时" -f [math]::Round($next / 60, 0) } else { "$next 分钟" }
-})
 $lblDx = New-Object System.Windows.Forms.Label
 $lblDx.Text = 'DirectX 运行库：检查中…'
 $lblDx.Font = $FontSmall
 $lblDx.ForeColor = $C.Dim
-$lblDx.Location = New-Object System.Drawing.Point(6, 606)
+$lblDx.Location = New-Object System.Drawing.Point(6, 614)
 $lblDx.Size = New-Object System.Drawing.Size(540, 20)
 $form.Controls.Add($lblDx)
 
 $btnDxFix = New-Object System.Windows.Forms.Button
 $btnDxFix.Text = '检查 DirectX'
 $btnDxFix.Size = New-Object System.Drawing.Size(170, 30)
-$btnDxFix.Location = New-Object System.Drawing.Point(560, 602)
+$btnDxFix.Location = New-Object System.Drawing.Point(560, 610)
 $btnDxFix.FlatStyle = 'Flat'
 $btnDxFix.Font = $FontSmall
 $btnDxFix.BackColor = [System.Drawing.Color]::FromArgb(48, 48, 58)
@@ -653,10 +642,10 @@ $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
 $btnDxFix.BringToFront()
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.2   数据目录: $Root"
+$lblVer.Text = "v4.3   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
-$lblVer.Location = New-Object System.Drawing.Point(6, 646)
+$lblVer.Location = New-Object System.Drawing.Point(6, 656)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
 $form.Controls.Add($lblVer)
 
@@ -670,8 +659,8 @@ $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
-$script:ViewSpanMin  = 5                        # 当前窗口跨度（分钟）
-$script:ViewSpanPts  = 600                      # 由 ViewSpanMin 换算，见下方初始化
+$script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
+$script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
 $script:ViewShiftPts = 0                        # 距最新数据的偏移点数，0 = 跟随最新
 $script:HistTime   = New-Object 'System.Collections.Generic.List[datetime]'
 $script:TempHist   = New-Object 'System.Collections.Generic.List[double]'
@@ -997,9 +986,7 @@ function Zoom-View([int]$dir) {
     if ($next -lt 0) { $next = 0 }
     if ($next -ge $cycle.Count) { $next = $cycle.Count - 1 }
     Set-ViewSpan $cycle[$next]
-    if ($script:BtnRange -and $script:BtnRange.Parent) {
-        $script:BtnRange.Text = if ($cycle[$next] -ge 60) { "{0} 小时" -f [math]::Round($cycle[$next] / 60, 0) } else { "$($cycle[$next]) 分钟" }
-    }
+
 }
 function Reset-View {
     $script:ViewShiftPts = 0
@@ -1011,31 +998,68 @@ function Reset-View {
 function Draw-Chart {
     if ($null -eq $script:TempHist -or $script:TempHist.Count -lt 1) { return }
     if (-not (Ensure-ChartBitmaps)) { return }
-    $cnt = $script:TempHist.Count
-    $spanMin = [math]::Round($cnt * ($script:IntervalMs / 1000.0) / 60.0, 1)
-    $secPerPt = $script:IntervalMs / 1000.0
-    $infoTxt = ("每 {0:g} 秒 1 点 · {1:N0} 点 · {2} 分钟" -f $secPerPt, $cnt, $spanMin)
 
-    if ($script:HasNvidia) {
-        [ChartRenderer]::Render($script:chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
-            $C.Card, $C.Grid, $C.Accent, $script:ColGray, $C.Dim, $infoTxt,
-            '温度 (°C)', '功耗 (W)', '°C', 'W', $script:GpuHover)
+    $secPerPt = $script:IntervalMs / 1000.0
+    $r = Get-ViewRange
+    $cnt = [int]$r.Count
+    if ($cnt -lt 1) { return }
+
+    # 同步滚动条
+    try {
+        $total = $script:TempHist.Count
+        $spanPts = [math]::Max(1, [int]$r.Span)
+        $maxShift = [math]::Max(0, $total - $spanPts)
+        $script:HistBar.LargeChange = $spanPts
+        $script:HistBar.SmallChange = [math]::Max(1, [int]($spanPts / 10))
+        $script:HistBar.Maximum = $maxShift + $spanPts - 1
+        $want = $maxShift - [int]$r.Shift
+        if ($want -lt 0) { $want = 0 }
+        if ($script:HistBar.Value -ne $want) { $script:HistBar.Value = $want }
+        $script:HistBar.Visible = ($total -gt $spanPts)
     }
-    else {
-        [ChartRenderer]::Render($script:chartBmp, $script:TempHist.ToArray(), $script:PowerHist.ToArray(), $cnt,
-            $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $infoTxt,
-            'GPU 占用 (%)', '显存 (MB)', '%', 'MB', $script:GpuHover)
+    catch { }
+
+    $spanMin = [math]::Round($cnt * $secPerPt / 60.0, 1)
+    $infoTxt = ("每 {0:g} 秒 1 点 · {1:N0} 点 · {2} 分钟" -f $secPerPt, $cnt, $spanMin)
+    if ($r.Shift -gt 0 -and $script:HistTime.Count -gt 0) {
+        $t0 = $script:HistTime[[math]::Min($r.From, $script:HistTime.Count - 1)]
+        $t1 = $script:HistTime[[math]::Min($r.To - 1, $script:HistTime.Count - 1)]
+        $infoTxt = ("{0} ~ {1}  （已暂停，共 {2:N0} 点）" -f $t0.ToString('HH:mm:ss'), $t1.ToString('HH:mm:ss'), $cnt)
     }
-    $chart.Refresh()
+
+    $aGpu = Get-Slice $script:TempHist $r
+    $bGpu = Get-Slice $script:PowerHist $r
+    if ($aGpu.Count -ge 1) {
+        if ($script:HasNvidia) {
+            [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
+                $C.Card, $C.Grid, $C.Accent, $script:ColGray, $C.Dim, $infoTxt,
+                '温度 (°C)', '功耗 (W)', '°C', 'W', $script:GpuHover)
+        }
+        else {
+            [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
+                $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $infoTxt,
+                'GPU 占用 (%)', '显存 (MB)', '%', 'MB', $script:GpuHover)
+        }
+        $chart.Refresh()
+    }
 
     if ($script:CpuTempHist.Count -ge 1) {
-        $cCnt = $script:CpuTempHist.Count
-        $cSpan = [math]::Round($cCnt * ($script:IntervalMs / 1000.0) / 60.0, 1)
-        $cInfo = ("每 {0:g} 秒 1 点 · {1:N0} 点 · {2} 分钟" -f $secPerPt, $cCnt, $cSpan)
-        [ChartRenderer]::Render($script:cpuBmp, $script:CpuTempHist.ToArray(), $script:CpuFreqHist.ToArray(), $cCnt,
-            $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $cInfo,
-            'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz', $script:CpuHover)
-        $cpuChart.Refresh()
+        $aCpu = Get-Slice $script:CpuTempHist $r
+        $bCpu = Get-Slice $script:CpuFreqHist $r
+        if ($aCpu.Count -ge 1) {
+            $cCnt = $aCpu.Count
+            $cSpan = [math]::Round($cCnt * $secPerPt / 60.0, 1)
+            $cInfo = ("每 {0:g} 秒 1 点 · {1:N0} 点 · {2} 分钟" -f $secPerPt, $cCnt, $cSpan)
+            if ($r.Shift -gt 0 -and $script:CpuHistTime.Count -gt 0) {
+                $t0 = $script:CpuHistTime[[math]::Min($r.From, $script:CpuHistTime.Count - 1)]
+                $t1 = $script:CpuHistTime[[math]::Min($r.To - 1, $script:CpuHistTime.Count - 1)]
+                $cInfo = ("{0} ~ {1}  （已暂停，共 {2:N0} 点）" -f $t0.ToString('HH:mm:ss'), $t1.ToString('HH:mm:ss'), $cCnt)
+            }
+            [ChartRenderer]::Render($script:cpuBmp, $aCpu, $bCpu, $cCnt,
+                $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $cInfo,
+                'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz', $script:CpuHover)
+            $cpuChart.Refresh()
+        }
     }
 }
 # ════════════════════════════════ 定时刷新 ════════════════════════════════
@@ -1139,6 +1163,7 @@ function Update-UI {
     while ($script:PowerHist.Count -gt $script:MaxPoints) { $script:PowerHist.RemoveAt(0) }
 
     # CPU 曲线：沿用最近一次有效值，保证和 GPU 曲线等宽
+    if ($script:FollowLive) { $script:ViewShiftPts = 0 }
     [void]$script:CpuHistTime.Add((Get-Date))
     [void]$script:CpuTempHist.Add([double]$script:LastCpuTemp)
     [void]$script:CpuFreqHist.Add([double]$script:LastCpuFreq)
