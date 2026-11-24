@@ -22,9 +22,16 @@ if (-not $Silent) {
 try {
     $selfPid = $PID
     $parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction SilentlyContinue).ParentProcessId
-    Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match 'BF6Monitor\.ps1' -and $_.ProcessId -ne $selfPid -and $_.ProcessId -ne $parentPid } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    $targets = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match 'GameCrashDiag\.ps1|BF6Monitor\.ps1' -and $_.ProcessId -ne $selfPid -and $_.ProcessId -ne $parentPid })
+    foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline) {
+        $left = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match 'GameCrashDiag\.ps1|BF6Monitor\.ps1' -and $_.ProcessId -ne $selfPid -and $_.ProcessId -ne $parentPid })
+        if ($left.Count -eq 0) { break }
+        Start-Sleep -Milliseconds 300
+    }
 } catch {}
 
 # 快捷方式
@@ -32,8 +39,20 @@ Remove-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) '游戏崩溃�
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) '游戏崩溃诊断器'
 Remove-Item $startMenu -Recurse -Force -ErrorAction SilentlyContinue
 
-# 注册表
+# 注册表：卸载入口
 Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCrashDiag' -Recurse -Force -ErrorAction SilentlyContinue
+
+# 注册表：开机自启项（不清掉的话，下次开机会弹「找不到脚本」）
+Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'GameCrashDiag' -ErrorAction SilentlyContinue
+
+# 注册表：任务管理器里那条自启项的启用/禁用记录
+foreach ($k in @(
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run',
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder'
+)) {
+    Remove-ItemProperty -Path $k -Name 'GameCrashDiag' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $k -Name '自启-托盘.vbs' -ErrorAction SilentlyContinue
+}
 
 # 程序文件（保留数据目录）
 $keep = @('logs', 'reports', 'backup')
