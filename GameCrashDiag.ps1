@@ -331,7 +331,7 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = '游戏崩溃诊断器'
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
-$form.Size = New-Object System.Drawing.Size(760, 700)
+$form.Size = New-Object System.Drawing.Size(760, 734)
 $form.MinimumSize = New-Object System.Drawing.Size(680, 660)
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $C.Bg
@@ -593,15 +593,36 @@ $lblHint = New-Object System.Windows.Forms.Label
 $lblHint.Text = '提示：游戏启动自动记录，退出/崩溃自动生成报告；鼠标移到曲线上可查看该点数值。'
 $lblHint.Font = $FontSmall
 $lblHint.ForeColor = $C.Dim
-$lblHint.Location = New-Object System.Drawing.Point(12, 582)
+$lblHint.Location = New-Object System.Drawing.Point(12, 578)
 $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
+# ── DirectX 状态行 + 修复按钮 ──
+$lblDx = New-Object System.Windows.Forms.Label
+$lblDx.Text = 'DirectX 运行库：检查中…'
+$lblDx.Font = $FontSmall
+$lblDx.ForeColor = $C.Dim
+$lblDx.Location = New-Object System.Drawing.Point(12, 606)
+$lblDx.Size = New-Object System.Drawing.Size(560, 20)
+$form.Controls.Add($lblDx)
+
+$btnDxFix = New-Object System.Windows.Forms.Button
+$btnDxFix.Text = '检查 DirectX'
+$btnDxFix.Size = New-Object System.Drawing.Size(150, 28)
+$btnDxFix.Location = New-Object System.Drawing.Point(586, 602)
+$btnDxFix.FlatStyle = 'Flat'
+$btnDxFix.Font = $FontSmall
+$btnDxFix.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+$btnDxFix.ForeColor = $C.Dim
+$btnDxFix.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+$btnDxFix.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(46, 46, 54)
+$btnDxFix.Add_Click({ Show-DxAction })
+$form.Controls.Add($btnDxFix)
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v3.7   数据目录: $Root"
+$lblVer.Text = "v3.8   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
-$lblVer.Location = New-Object System.Drawing.Point(12, 618)
+$lblVer.Location = New-Object System.Drawing.Point(12, 646)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
 $form.Controls.Add($lblVer)
 
@@ -1195,6 +1216,8 @@ $script:Timer.Add_Tick({ try { Update-UI } catch { $lblStatus.Text = '✕ 错误
 $form.Add_Shown({
     $script:Timer.Start()
     if ($Tray) { $form.Hide() }
+    # 启动时检测一次 DirectX（异步，不阻塞界面）
+    try { Update-DxIndicator } catch {}
     try {
         $chkAutoStart.Checked = Test-AutoStart
         $script:AutoStartInit = $true
@@ -1277,61 +1300,6 @@ if ($UiTest) {
     exit 0
 }
 
-if ($Shot) {
-    # 离屏截图：不显示窗口，直接把界面渲染成 PNG（不抢游戏焦点）
-    if ($FillPoints -gt 0) {
-        # 压测：灌入 N 个合成点，验证 1 万点缓存的绘制性能
-        $script:TempHist.Clear(); $script:PowerHist.Clear()
-        $rnd = New-Object System.Random 42
-        for ($i = 0; $i -lt $FillPoints; $i++) {
-            [void]$script:TempHist.Add(58 + 4 * [math]::Sin($i / 90.0) + $rnd.NextDouble() * 0.8)
-            [void]$script:PowerHist.Add(145 + 20 * [math]::Sin($i / 40.0) + $rnd.NextDouble() * 6)
-        }
-        $script:CpuTempHist.Clear(); $script:CpuFreqHist.Clear()
-        for ($i = 0; $i -lt $FillPoints; $i++) {
-            [void]$script:CpuTempHist.Add(64 + 6 * [math]::Sin($i / 55.0) + $rnd.NextDouble() * 1.5)
-            [void]$script:CpuFreqHist.Add(3300 + 700 * [math]::Sin($i / 30.0) + $rnd.NextDouble() * 120)
-        }
-        $wasRec2 = $script:Recording
-        $script:Recording = $false
-        Update-UI
-        $script:Recording = $wasRec2
-    }
-    else {
-        $wasRec = $script:Recording
-        $script:Recording = $false
-        for ($i = 0; $i -lt 30; $i++) { Update-UI; Start-Sleep -Milliseconds 70 }
-        $script:Recording = $wasRec
-    }
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    Draw-Chart
-    $sw.Stop()
-    Write-Output ("绘制耗时: {0:N1} ms  (缓存 {1:N0} 点)" -f $sw.Elapsed.TotalMilliseconds, $script:TempHist.Count)
-    $null = $form.Handle
-    function Initialize-Handles($ctrl) {
-        foreach ($ch in $ctrl.Controls) {
-            try { $null = $ch.Handle } catch {}
-            Initialize-Handles $ch
-        }
-    }
-    Initialize-Handles $form
-    $form.PerformLayout()
-    [System.Windows.Forms.Application]::DoEvents()
-    if ($FillPoints -gt 0) {
-        Show-HoverTip 'gpu' $chart ([int]($chart.Width * 0.62)) 40
-        [System.Windows.Forms.Application]::DoEvents()
-        Write-Output ("提示框: visible={0} size={1}x{2} pos=({3},{4}) text={5}" -f `
-            $tip.Visible, $tip.Width, $tip.Height, $tip.Left, $tip.Top, $tip.Text)
-    }
-    $bmp2 = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
-    $form.DrawToBitmap($bmp2, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
-    $bmp2.Save($Shot, [System.Drawing.Imaging.ImageFormat]::Png)
-    $bmp2.Dispose()
-    Write-Output "截图已保存: $Shot"
-    $form.Dispose()
-    exit 0
-}
-
 function Get-DxStatus {
     <# 检查 DirectX 关键组件是否齐全 #>
     $sys = Join-Path $env:WINDIR 'System32'
@@ -1365,13 +1333,14 @@ function Get-DxStatus {
 }
 
 function Invoke-DxRepair {
+    param([switch]$Force)
     <#
       自动修复 DirectX：
         · 缺 DX9/10/11 扩展库 → 下载微软官方 DirectX 运行库并静默安装
         · 缺核心 DLL（d3d12/d3d11/dxgi 等）→ 用 DISM 修复系统映像
     #>
     $dx = Get-DxStatus
-    if ($dx.Missing.Count -eq 0) {
+    if ($dx.Missing.Count -eq 0 -and -not $Force) {
         [System.Windows.Forms.MessageBox]::Show(
             "DirectX 组件齐全，不需要修复。`n`n如果要强制校验系统文件，可以运行：`n  DISM /Online /Cleanup-Image /RestoreHealth",
             'DirectX 检查', 'OK', 'Information') | Out-Null
@@ -1452,6 +1421,67 @@ function Invoke-DxRepair {
 
     $icon = if ($after.Missing.Count -eq 0) { 'Information' } else { 'Warning' }
     [System.Windows.Forms.MessageBox]::Show(($log -join "`r`n"), 'DirectX 修复结果', 'OK', $icon) | Out-Null
+}
+
+function Update-DxIndicator {
+    <# 刷新主界面上的 DirectX 状态行 + 按钮文字 #>
+    $dx = Get-DxStatus
+    $script:DxStatus = $dx
+    if ($null -eq $lblDx) { return }
+
+    if ($dx.Missing.Count -eq 0) {
+        $lblDx.Text = 'DirectX 运行库：12 项组件齐全，不需要修复'
+        $lblDx.ForeColor = $C.Accent
+        $btnDxFix.Text = '查看 / 重装'
+        $btnDxFix.ForeColor = $C.Dim
+    }
+    else {
+        $names = ($dx.Missing | ForEach-Object { $_.Name }) -join '、'
+        $lblDx.Text = "DirectX 运行库：缺少 $($dx.Missing.Count) 项（$names），建议修复"
+        $lblDx.ForeColor = $C.Warn
+        $btnDxFix.Text = '修复 DirectX'
+        $btnDxFix.ForeColor = $C.Warn
+    }
+}
+
+function Show-DxAction {
+    <# 点击主界面 DirectX 按钮：完整就给说明，不完整就修复 #>
+    $dx = Get-DxStatus
+    if ($dx.Missing.Count -eq 0) {
+        $lines = @(
+            'DirectX 运行库检查结果：完整',
+            '',
+            "已安装的 12 项组件：",
+            '  · DirectX 12（d3d12.dll / d3d12core.dll）',
+            '  · DirectX 11（d3d11.dll）',
+            '  · DirectX 10.1（d3d10_1.dll）',
+            '  · DirectX 9（d3d9.dll）',
+            '  · DXGI 交换链（dxgi.dll）',
+            '  · 着色器编译器（d3dcompiler_47.dll）',
+            '  · DX9/10/11 扩展库（d3dx9_43 / d3dx10_43 / d3dx11_43）',
+            '  · 手柄支持（XInput1_4.dll）',
+            '  · 音频引擎（xaudio2_9.dll）',
+            '',
+            '组件都在，说明不是 DirectX 缺失的问题。',
+            '',
+            '如果游戏仍然报 DirectX 相关错误，按这个顺序排查：',
+            '  1. 游戏文件完整性 —— 在 Steam / EA App 里"验证游戏文件"',
+            '  2. 显卡驱动 —— 用 DDU 干净卸载后装最新版',
+            '  3. 系统文件 —— 以管理员运行 sfc /scannow',
+            '  4. 系统映像 —— 以管理员运行 DISM /Online /Cleanup-Image /RestoreHealth',
+            '',
+            '如果你想强制重装一遍 DirectX 运行库，点"是"。'
+        )
+        $r = [System.Windows.Forms.MessageBox]::Show(($lines -join "`r`n"), 'DirectX 检查结果', 'YesNo', 'Information')
+        if ($r -eq 'Yes') {
+            $script:DxForceReinstall = $true
+            Invoke-DxRepair -Force
+            Update-DxIndicator
+        }
+        return
+    }
+    Invoke-DxRepair
+    Update-DxIndicator
 }
 
 function Get-TempProfile {
@@ -1578,10 +1608,10 @@ function Get-HealthReportText {
     }
     $dxs = Get-DxStatus
     if ($dxs.Missing.Count -eq 0) {
-        [void]$L_.Add('  DX 组件 : 12 项全部齐全')
+        [void]$L_.Add('  DirectX 组件 : 12 项全部齐全')
     }
     else {
-        [void]$L_.Add("  DX 组件 : 缺 $($dxs.Missing.Count) 项（点「修复 DirectX」可自动处理）")
+        [void]$L_.Add("  DirectX 组件 : 缺 $($dxs.Missing.Count) 项（点「修复 DirectX」可自动处理）")
         foreach ($m in $dxs.Missing) { [void]$L_.Add("            - $($m.Name)（$($m.File)）") }
     }
 
@@ -1918,6 +1948,63 @@ $form.Add_FormClosing({
         } catch {}
     }
 })
+if ($Shot) {
+    try { Update-DxIndicator } catch {}
+    # 离屏截图：不显示窗口，直接把界面渲染成 PNG（不抢游戏焦点）
+    if ($FillPoints -gt 0) {
+        # 压测：灌入 N 个合成点，验证 1 万点缓存的绘制性能
+        $script:TempHist.Clear(); $script:PowerHist.Clear()
+        $rnd = New-Object System.Random 42
+        for ($i = 0; $i -lt $FillPoints; $i++) {
+            [void]$script:TempHist.Add(58 + 4 * [math]::Sin($i / 90.0) + $rnd.NextDouble() * 0.8)
+            [void]$script:PowerHist.Add(145 + 20 * [math]::Sin($i / 40.0) + $rnd.NextDouble() * 6)
+        }
+        $script:CpuTempHist.Clear(); $script:CpuFreqHist.Clear()
+        for ($i = 0; $i -lt $FillPoints; $i++) {
+            [void]$script:CpuTempHist.Add(64 + 6 * [math]::Sin($i / 55.0) + $rnd.NextDouble() * 1.5)
+            [void]$script:CpuFreqHist.Add(3300 + 700 * [math]::Sin($i / 30.0) + $rnd.NextDouble() * 120)
+        }
+        $wasRec2 = $script:Recording
+        $script:Recording = $false
+        Update-UI
+        $script:Recording = $wasRec2
+    }
+    else {
+        $wasRec = $script:Recording
+        $script:Recording = $false
+        for ($i = 0; $i -lt 30; $i++) { Update-UI; Start-Sleep -Milliseconds 70 }
+        $script:Recording = $wasRec
+    }
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    Draw-Chart
+    $sw.Stop()
+    Write-Output ("绘制耗时: {0:N1} ms  (缓存 {1:N0} 点)" -f $sw.Elapsed.TotalMilliseconds, $script:TempHist.Count)
+    $null = $form.Handle
+    function Initialize-Handles($ctrl) {
+        foreach ($ch in $ctrl.Controls) {
+            try { $null = $ch.Handle } catch {}
+            Initialize-Handles $ch
+        }
+    }
+    Initialize-Handles $form
+    $form.PerformLayout()
+    [System.Windows.Forms.Application]::DoEvents()
+    if ($FillPoints -gt 0) {
+        Show-HoverTip 'gpu' $chart ([int]($chart.Width * 0.62)) 40
+        [System.Windows.Forms.Application]::DoEvents()
+        Write-Output ("提示框: visible={0} size={1}x{2} pos=({3},{4}) text={5}" -f `
+            $tip.Visible, $tip.Width, $tip.Height, $tip.Left, $tip.Top, $tip.Text)
+    }
+    $bmp2 = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
+    $form.DrawToBitmap($bmp2, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
+    $bmp2.Save($Shot, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp2.Dispose()
+    Write-Output "截图已保存: $Shot"
+    $form.Dispose()
+    exit 0
+}
+
+
 if ($TestDiagnosis) {
     Start-Logging 'system'
     for ($i = 0; $i -lt 4; $i++) { Update-UI; Start-Sleep -Milliseconds 350 }
