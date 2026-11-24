@@ -76,6 +76,20 @@ function New-Shortcut($lnkPath, $target, $arguments, $workdir, $iconPath, $desc)
 }
 
 $desktop = [Environment]::GetFolderPath('Desktop')
+
+# 先清掉历史版本留下的快捷方式（改名前的、重复的），保证桌面上只有一个
+try {
+    Get-ChildItem $desktop -Filter '*.lnk' -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            $sh = $ws.CreateShortcut($_.FullName)
+            $all = "$($sh.TargetPath) $($sh.Arguments)"
+            if ($all -match 'GameCrashDiag|BF6Monitor|启动诊断器|游戏崩溃诊断器') {
+                Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
+    }
+} catch {}
+
 New-Shortcut (Join-Path $desktop '游戏崩溃诊断器.lnk') $wscript "`"$vbs`"" $InstallDir $icon '战地6 GPU/CPU 监控与崩溃取证'
 
 $startMenu = Join-Path ([Environment]::GetFolderPath('Programs')) '游戏崩溃诊断器'

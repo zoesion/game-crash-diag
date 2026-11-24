@@ -598,7 +598,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v3.3   数据目录: $Root"
+$lblVer.Text = "v3.4   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(12, 618)
@@ -1227,7 +1227,7 @@ if ($script:DpiScale -gt 1.01) {
     $form.Scale($sz)
 }
 # ── 单实例保护：重复点图标只保留一个实例 ──
-if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog)) {
+if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
         # 已有实例：写信号文件让它把窗口弹出来，然后静默退出
@@ -1332,6 +1332,77 @@ if ($Shot) {
     exit 0
 }
 
+function Get-TempProfile {
+    <#
+      分别统计「空闲」和「游戏内」的温度，用于基线对比。
+      空闲 = logs\system\   游戏 = 最近写入的 logs\<游戏名>\
+    #>
+    $result = @{
+        IdleCpuMed = $null; IdleCpuMax = $null; IdleGpuMed = $null; IdleGpuMax = $null; IdleCount = 0
+        GameCpuMed = $null; GameCpuMax = $null; GameGpuMed = $null; GameGpuMax = $null; GameCount = 0
+        GameName   = $null
+    }
+
+    $readStats = {
+        param($files, [int]$maxRows = 4000)
+        $cpu = New-Object System.Collections.Generic.List[double]
+        $gpu = New-Object System.Collections.Generic.List[double]
+        $total = 0
+        foreach ($f in $files) {
+            try {
+                $lines = Get-Content -LiteralPath $f.FullName -ErrorAction Stop
+                $step = [Math]::Max(1, [int]($lines.Count / 1200))
+                for ($i = 1; $i -lt $lines.Count; $i += $step) {
+                    $a = $lines[$i] -split ','
+                    if ($a.Count -lt 15) { continue }
+                    $t = 0.0
+                    if ([double]::TryParse($a[14], [ref]$t) -and $t -gt 0 -and $t -lt 130) { $cpu.Add($t) }
+                    if ([double]::TryParse($a[1], [ref]$t) -and $t -gt 0 -and $t -lt 130) { $gpu.Add($t) }
+                    $total++
+                    if ($total -ge $maxRows) { break }
+                }
+            } catch {}
+            if ($total -ge $maxRows) { break }
+        }
+        $med = { param($list) if ($list.Count -eq 0) { return $null }; $s = $list | Sort-Object; return [math]::Round($s[[int]($s.Count / 2)], 0) }
+        $mx = { param($list) if ($list.Count -eq 0) { return $null }; return [math]::Round(($list | Measure-Object -Maximum).Maximum, 0) }
+        return @{
+            CpuMed = & $med $cpu; CpuMax = & $mx $cpu
+            GpuMed = & $med $gpu; GpuMax = & $mx $gpu
+            Count  = $cpu.Count
+        }
+    }
+
+    # 空闲：system 目录最近 2 个文件
+    $sysDir = Join-Path $LogDir 'system'
+    if (Test-Path $sysDir) {
+        $files = @(Get-ChildItem $sysDir -Filter '*.csv' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 2)
+        if ($files.Count -gt 0) {
+            $s = & $readStats $files
+            $result.IdleCpuMed = $s.CpuMed; $result.IdleCpuMax = $s.CpuMax
+            $result.IdleGpuMed = $s.GpuMed; $result.IdleGpuMax = $s.GpuMax
+            $result.IdleCount = $s.Count
+        }
+    }
+
+    # 游戏：最近写入的非 system 目录
+    $gameDirs = @(Get-ChildItem $LogDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'system' } |
+                  Sort-Object LastWriteTime -Descending)
+    foreach ($gd in $gameDirs) {
+        $files = @(Get-ChildItem $gd.FullName -Filter '*.csv' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 3)
+        if ($files.Count -gt 0) {
+            $s = & $readStats $files
+            if ($s.Count -gt 0) {
+                $result.GameCpuMed = $s.CpuMed; $result.GameCpuMax = $s.CpuMax
+                $result.GameGpuMed = $s.GpuMed; $result.GameGpuMax = $s.GpuMax
+                $result.GameCount = $s.Count
+                $result.GameName = $gd.Name
+                break
+            }
+        }
+    }
+    return $result
+}
 function Get-HealthReportText {
     $L_ = New-Object System.Collections.Generic.List[string]
 
@@ -1451,21 +1522,79 @@ function Get-HealthReportText {
     }
     [void]$L_.Add('')
 
-    # ══ 5. 诊断结论 ══
+    # ══ 5. 温度基线对比 ══
+    $tp = Get-TempProfile
+    [void]$L_.Add('【温度基线对比】')
+    [void]$L_.Add('  （判断散热好坏要拿"不玩游戏时"当基线，不能只看绝对值）')
+    if ($tp.IdleCount -gt 0) {
+        [void]$L_.Add(("  空闲时   CPU 均值 {0}°C  峰值 {1}°C      GPU 均值 {2}°C  峰值 {3}°C" -f $tp.IdleCpuMed, $tp.IdleCpuMax, $tp.IdleGpuMed, $tp.IdleGpuMax))
+    } else {
+        [void]$L_.Add('  空闲时   （还没有 logs\system 记录，关掉游戏跑一会儿再来看）')
+    }
+    if ($tp.GameCount -gt 0) {
+        [void]$L_.Add(("  游戏内   CPU 均值 {0}°C  峰值 {1}°C      GPU 均值 {2}°C  峰值 {3}°C   （{4}）" -f $tp.GameCpuMed, $tp.GameCpuMax, $tp.GameGpuMed, $tp.GameGpuMax, $tp.GameName))
+    } else {
+        [void]$L_.Add('  游戏内   （还没记录到游戏数据）')
+    }
+    if ($tp.IdleCount -gt 0 -and $tp.GameCount -gt 0) {
+        $dCpu = $tp.GameCpuMed - $tp.IdleCpuMed
+        $dGpu = $tp.GameGpuMed - $tp.IdleGpuMed
+        [void]$L_.Add(("  温升     CPU +{0}°C                        GPU +{1}°C" -f $dCpu, $dGpu))
+        # 综合评估：先看空闲是否正常，再看游戏内温升
+        if ($tp.IdleCpuMed -lt 68 -and $tp.GameCpuMax -lt 93 -and $tp.GameGpuMax -lt 85) {
+            [void]$L_.Add('  评估     正常 —— 空闲温度低、游戏内温升合理，散热没问题')
+        }
+        elseif ($tp.IdleCpuMed -lt 68) {
+            [void]$L_.Add('  评估     空闲正常，但游戏内偏高 —— 散热余量不足，建议限制帧率/降画质')
+        }
+        else {
+            [void]$L_.Add('  评估     空闲温度就已经偏高 —— 散热本身有问题，优先处理清灰/硅脂/风道')
+        }
+    }
+    [void]$L_.Add('')
+
+    # ══ 6. 诊断结论 ══
     [void]$L_.Add('【诊断结论】')
     $issues = @()
     $advice = @()
 
-    if ($maxT -ge 85) {
-        $issues += "GPU 温度偏高（最高 $([math]::Round($maxT))°C，超过 85°C 警戒线）"
-        $advice += '散热问题：清理风扇积灰、更换硅脂、笔记本垫高或加散热底座；也可以限制游戏帧率降低发热'
-    } elseif ($maxT -ge 78) {
-        $issues += "GPU 温度中等偏高（最高 $([math]::Round($maxT))°C）"
-        $advice += '注意散热通风，避免被褥遮挡出风口'
+    # ── 温度判断：以"空闲基线"为参照 ──
+    if ($tp.IdleCount -gt 0) {
+        if ($tp.IdleCpuMed -ge 75) {
+            $issues += "CPU 空闲温度偏高（均值 $($tp.IdleCpuMed)°C，正常应在 40~60°C）"
+            $advice += 'CPU 散热需要处理：检查风扇转速、硅脂是否涂匀、电源模式是否锁了高性能'
+        } elseif ($tp.IdleCpuMed -ge 68) {
+            $issues += "CPU 空闲温度略高（均值 $($tp.IdleCpuMed)°C）"
+            $advice += '留意 CPU 空闲温度，若持续上升再考虑清理散热'
+        }
+        if ($tp.IdleGpuMed -ge 60) {
+            $issues += "GPU 空闲温度偏高（均值 $($tp.IdleGpuMed)°C，正常应在 35~50°C）"
+            $advice += 'GPU 空闲温度高通常是风扇停转策略或机箱风道问题，可检查是否开了"零风扇"模式'
+        }
     }
-    if ($script:CpuLast -and $script:CpuLast.Temp -ge 95) {
-        $issues += "CPU 温度过高（$($script:CpuLast.Temp)°C），可能触发降频"
-        $advice += 'CPU 散热不足：检查硅脂、电源模式不要锁太高功耗'
+    if ($tp.GameCount -gt 0) {
+        $dCpu = if ($null -ne $tp.IdleCpuMed) { $tp.GameCpuMed - $tp.IdleCpuMed } else { $null }
+        $dGpu = if ($null -ne $tp.IdleGpuMed) { $tp.GameGpuMed - $tp.IdleGpuMed } else { $null }
+        if ($tp.GameCpuMax -ge 95) {
+            $issues += "CPU 游戏内峰值 $($tp.GameCpuMax)°C，已到笔记本安全线（95°C 以上会明显降频）"
+            $advice += '限制帧率或降低画质，减轻 CPU 负载；确认电源模式没锁在超频档'
+        } elseif ($tp.GameCpuMed -ge 90) {
+            $issues += "CPU 游戏内均值 $($tp.GameCpuMed)°C，长时间处于高位"
+            $advice += '把帧率限制到 60~90，能明显压低 CPU 温度'
+        } elseif ($null -ne $dCpu -and $dCpu -ge 45) {
+            $issues += "CPU 游戏内温升 +$dCpu°C（空闲 $($tp.IdleCpuMed) → 游戏 $($tp.GameCpuMed)），偏高"
+            $advice += 'CPU 散热余量不足：清理风道、垫高机身、控制帧率'
+        }
+        if ($tp.GameGpuMax -ge 85) {
+            $issues += "GPU 游戏内峰值 $($tp.GameGpuMax)°C，偏高"
+            $advice += '降低功耗墙或限制帧率，改善散热通风'
+        } elseif ($null -ne $dGpu -and $dGpu -ge 45) {
+            $issues += "GPU 游戏内温升 +$dGpu°C（空闲 $($tp.IdleGpuMed) → 游戏 $($tp.GameGpuMed)），偏高"
+            $advice += 'GPU 散热余量不足：清理风扇积灰、垫高机身'
+        }
+    } elseif ($null -ne $maxT -and $maxT -ge 90) {
+        $issues += "本次记录 GPU 最高 $([math]::Round($maxT))°C"
+        $advice += '温度偏高，注意散热'
     }
     if ($n -gt 0 -and ($capN * 100.0 / $n) -ge 70 -and $maxP -gt 170) {
         $issues += "长期撞功耗墙（$([math]::Round($capPct))% 采样），功耗峰值 $([math]::Round($maxP))W"

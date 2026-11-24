@@ -24,7 +24,8 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 $files = @(
     'GameCrashDiag.ps1', 'ChartRenderer.cs', '启动诊断器.vbs', '调试启动.cmd', 'app.ico',
     'README.md', 'LICENSE', 'install.ps1', 'uninstall.ps1', '安装.cmd', '卸载.cmd',
-    '解除锁定.cmd', '推送到GitHub.cmd', '使用说明.txt', 'preview.png'
+    '解除锁定.cmd', '推送到GitHub.cmd', '使用说明.txt', 'preview.png',
+    '创建快捷方式.ps1', '创建桌面快捷方式.cmd'
 )
 foreach ($f in $files) {
     $p = Join-Path $root $f
