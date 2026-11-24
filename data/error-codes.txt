@@ -1,0 +1,27 @@
+0x887A0006|DXGI_ERROR_DEVICE_HUNG|显卡设备挂死：GPU 没有在规定时间内响应渲染指令|超频不稳、驱动缺陷、GPU 计算单元报错|关超频；更新/回滚驱动；降低功耗墙；关闭 HAGS
+0x887A0005|DXGI_ERROR_DEVICE_REMOVED|显卡设备被移除或重置（通常伴随挂死）|驱动崩溃后被系统重置、显卡掉卡、供电不足|查 nvlddmkm 事件；检查供电与温度；DDU 干净重装驱动
+0x887A0007|DXGI_ERROR_DEVICE_RESET|显卡设备被重置|TDR 超时触发、驱动异常|放宽 TdrDelay；排查稳定性；更新驱动
+0x887A0020|DXGI_ERROR_DRIVER_INTERNAL_ERROR|显卡驱动内部错误|驱动缺陷或与系统版本不匹配|更新到游戏推荐驱动；检查系统更新
+0x887A0004|DXGI_ERROR_UNSUPPORTED|请求的 DXGI 功能不被支持|驱动过旧、显卡不支持该特性|更新驱动；确认显卡支持 DX12
+0x887A0001|DXGI_ERROR_INVALID_CALL|游戏/驱动传入了非法的 DXGI 调用参数|游戏自身 BUG、MOD 冲突、驱动缺陷|验证游戏文件完整性；卸载 MOD
+0xC0000005|ACCESS_VIOLATION|访问了非法内存地址（崩溃里最常见）|游戏 BUG、内存不稳定、驱动越界、MOD/注入 DLL|关掉叠加层与 MOD；跑内存测试；验证游戏文件
+0xC0000409|STACK_BUFFER_OVERRUN|检测到栈溢出/安全校验失败|反作弊冲突、注入 DLL、系统组件异常|移除注入类工具；验证游戏文件
+0xC0000374|HEAP_CORRUPTION|堆内存被破坏|内存故障、第三方 DLL、驱动越界|内存测试；干净启动排查
+0x8007000E|E_OUTOFMEMORY|显存或内存不足|画质设置过高、显存泄漏、后台占用大|降低纹理质量；关闭后台程序；增加虚拟内存
+0xC000001D|ILLEGAL_INSTRUCTION|执行了非法指令|CPU 不稳（超频/降压）、程序损坏|恢复 BIOS 默认；关掉 CPU 超频
+0x00000116|VIDEO_TDR_FAILURE|显卡驱动响应超时，系统重置显卡（蓝屏常见）|超频、驱动缺陷、供电/散热、显卡硬件问题|关超频；降功耗墙；更新驱动；查散热
+0x00000117|VIDEO_TDR_TIMEOUT_DETECTED|显卡驱动在超时时间内没有响应|同上|同上
+0x0000003B|SYSTEM_SERVICE_EXCEPTION|系统服务例程异常|驱动冲突、内存问题|干净启动；更新驱动
+0x0000001A|MEMORY_MANAGEMENT|内存管理故障|内存条故障、超频不稳|内存测试；恢复默认频率
+0x00000124|WHEA_UNCORRECTABLE_ERROR|硬件不可纠正错误|CPU/内存/主板硬件或超频不稳|恢复默认频率；检查散热与供电；必要时送修
+0x0000009F|DRIVER_POWER_STATE_FAILURE|驱动电源状态切换失败|驱动缺陷、休眠/唤醒冲突|更新驱动；禁用快速启动
+0x00000101|CLOCK_WATCHDOG_TIMEOUT|CPU 核心长时间无响应|CPU 超频/降压不稳、散热不足|恢复默认；检查散热
+0x0000007E|SYSTEM_THREAD_EXCEPTION_NOT_HANDLED|系统线程异常未处理|驱动缺陷、内存问题|更新驱动；内存测试
+nvlddmkm-13|NVIDIA 驱动：图形处理器全局异常|GPU 内部计算单元报错（多次 Warp 错误）|核心频率不稳、显存过热、硬件老化|关超频；降核心频率/功耗墙；改善散热
+nvlddmkm-14|NVIDIA 驱动：显存访问异常|显存读写错误|显存超频、显存过热、硬件问题|关显存超频；降功耗；检查散热
+nvlddmkm-153|NVIDIA 驱动：引擎重置|驱动内部引擎被重置|驱动缺陷或硬件不稳|更新驱动；观察是否复发
+nvlddmkm-4101|NVIDIA 驱动已停止响应并已恢复|显卡短暂挂死，驱动恢复（TDR）|超频、驱动、供电|关超频；放宽 TdrDelay；更新驱动
+livekernel-141|LiveKernelEvent 141：显卡硬件错误|系统记录到 GPU 硬件级异常|供电不足、超频、显卡硬件问题|降低功耗墙；关超频；检查电源适配器
+livekernel-117|LiveKernelEvent 117：显示驱动超时|同上（TDR 类）|同上|同上
+livekernel-1a1|LiveKernelEvent 1a1：内存管理异常|内存子系统报告异常|内存条、超频|内存测试；恢复默认频率
+event-41|Kernel-Power 41：系统未正常关机|突然断电/死机/蓝屏后自动重启|供电中断、电源故障、硬件死机|检查电源；关闭自动重启后复现看蓝屏码

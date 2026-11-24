@@ -36,6 +36,7 @@ foreach ($f in 'GameCrashDiag.ps1', 'ChartRenderer.cs', '启动诊断器.vbs', '
     if (Test-Path $p) { $items += $p }
 }
 $items += (Join-Path $root 'tools')
+$items += (Join-Path $root 'data')
 Compress-Archive -Path $items -DestinationPath $payload -Force
 Write-Host "内嵌资源: app.zip  $([math]::Round((Get-Item $payload).Length / 1KB, 1)) KB"
 

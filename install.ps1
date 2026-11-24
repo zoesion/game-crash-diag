@@ -45,6 +45,10 @@ foreach ($f in $files) {
     $p = Join-Path $src $f
     if (Test-Path $p) { Copy-Item $p $InstallDir -Force }
 }
+$dataSrc = Join-Path $src 'data'
+if (Test-Path $dataSrc) {
+    Copy-Item $dataSrc (Join-Path $InstallDir 'data') -Recurse -Force
+}
 $toolSrc = Join-Path $src 'tools'
 if (Test-Path $toolSrc) {
     Copy-Item $toolSrc (Join-Path $InstallDir 'tools') -Recurse -Force

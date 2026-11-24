@@ -347,7 +347,7 @@ $lblTitle = New-Object System.Windows.Forms.Label
 $lblTitle.Text = '游戏崩溃诊断器'
 $lblTitle.Font = $FontTitle
 $lblTitle.ForeColor = $C.Text
-$lblTitle.Location = New-Object System.Drawing.Point(12, 8)
+$lblTitle.Location = New-Object System.Drawing.Point(6, 8)
 $lblTitle.AutoSize = $true
 $form.Controls.Add($lblTitle)
 
@@ -356,7 +356,7 @@ $modeTxt = if ($script:HasNvidia) { '' } else { '    （通用模式）' }
 $lblSub.Text = "GPU  ·  $($gpuInfo.Name)    驱动 $($gpuInfo.Driver)$modeTxt"
 $lblSub.Font = $FontMid
 $lblSub.ForeColor = $C.Dim
-$lblSub.Location = New-Object System.Drawing.Point(14, 42)
+$lblSub.Location = New-Object System.Drawing.Point(8, 42)
 $lblSub.AutoSize = $true
 $form.Controls.Add($lblSub)
 
@@ -387,10 +387,10 @@ function New-Card($x, $y, $w, $h, $title) {
     $p
 }
 
-$cardTemp  = New-Card 12  66 175 74 '温度'
-$cardPower = New-Card 199 66 175 74 '功耗'
-$cardClock = New-Card 386 66 175 74 '核心频率'
-$cardUtil  = New-Card 573 66 175 74 'GPU 占用'
+$cardTemp  = New-Card 6   66 178 74 '温度'
+$cardPower = New-Card 196 66 178 74 '功耗'
+$cardClock = New-Card 386 66 178 74 '核心频率'
+$cardUtil  = New-Card 576 66 178 74 'GPU 占用'
 
 function Add-BigValue($panel, $name) {
     $l = New-Object System.Windows.Forms.Label
@@ -430,9 +430,9 @@ $unitUtil.Location = New-Object System.Drawing.Point(150, 12); $unitUtil.AutoSiz
 $cardUtil.Controls.Add($unitUtil)
 
 # ── 曲线图 ──
-$chartW, $chartH = 736, 120
+$chartW, $chartH = 748, 120
 $chart = New-Object System.Windows.Forms.PictureBox
-$chart.Location = New-Object System.Drawing.Point(12, 146)
+$chart.Location = New-Object System.Drawing.Point(6, 146)
 $chart.Size = New-Object System.Drawing.Size($chartW, $chartH)
 $chart.BackColor = $C.Card
 $form.Controls.Add($chart)
@@ -442,7 +442,7 @@ $chart.Image = $null
 
 # ── CPU 走势图 ──
 $cpuChart = New-Object System.Windows.Forms.PictureBox
-$cpuChart.Location = New-Object System.Drawing.Point(12, 368)
+$cpuChart.Location = New-Object System.Drawing.Point(6, 368)
 $cpuChart.Size = New-Object System.Drawing.Size($chartW, 110)
 $cpuChart.BackColor = $C.Card
 $form.Controls.Add($cpuChart)
@@ -459,15 +459,15 @@ $lblCpuModel = New-Object System.Windows.Forms.Label
 $lblCpuModel.Text = "CPU  ·  $cpuNameTxt    $cpuCoreTxt"
 $lblCpuModel.Font = $FontMid
 $lblCpuModel.ForeColor = $C.Dim
-$lblCpuModel.Location = New-Object System.Drawing.Point(14, 268)
+$lblCpuModel.Location = New-Object System.Drawing.Point(8, 268)
 $lblCpuModel.AutoSize = $true
 $form.Controls.Add($lblCpuModel)
 
 # ── CPU 四个卡片 ──
-$cardCpuTemp  = New-Card 12  288 175 74 'CPU 温度'
-$cardCpuClock = New-Card 199 288 175 74 'CPU 频率'
-$cardCpuUtil  = New-Card 386 288 175 74 'CPU 占用'
-$cardCpuCores = New-Card 573 288 175 74 '活跃核心'
+$cardCpuTemp  = New-Card 6   288 178 74 'CPU 温度'
+$cardCpuClock = New-Card 196 288 178 74 'CPU 频率'
+$cardCpuUtil  = New-Card 386 288 178 74 'CPU 占用'
+$cardCpuCores = New-Card 576 288 178 74 '活跃核心'
 
 $valCpuTemp  = Add-BigValue $cardCpuTemp  'v'
 $valCpuClock = Add-BigValue $cardCpuClock 'v'
@@ -493,7 +493,7 @@ $lblDetail = New-Object System.Windows.Forms.Label
 $lblDetail.Text = 'CPU -- / -- / --      显存 -- / -- MB      降频 --'
 $lblDetail.Font = $FontSmall
 $lblDetail.ForeColor = $C.Dim
-$lblDetail.Location = New-Object System.Drawing.Point(12, 486)
+$lblDetail.Location = New-Object System.Drawing.Point(6, 486)
 $lblDetail.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblDetail)
 
@@ -501,7 +501,7 @@ $lblStats = New-Object System.Windows.Forms.Label
 $lblStats.Text = '本次未记录'
 $lblStats.Font = $FontSmall
 $lblStats.ForeColor = $C.Dim
-$lblStats.Location = New-Object System.Drawing.Point(12, 508)
+$lblStats.Location = New-Object System.Drawing.Point(6, 508)
 $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
@@ -526,11 +526,11 @@ function New-Button($x, $text, $w = 120) {
     $b
 }
 
-$btnStart = New-Button 12  '开始记录'
-$btnStop  = New-Button 140 '停止'
-$btnLogs  = New-Button 268 '打开数据目录'
-$btnRep   = New-Button 396 '打开崩溃报告'
-$btnDiag  = New-Button 524 '诊断' 90
+$btnStart = New-Button 6   '开始记录'
+$btnStop  = New-Button 134 '停止'
+$btnLogs  = New-Button 262 '打开数据目录'
+$btnRep   = New-Button 390 '打开崩溃报告'
+$btnDiag  = New-Button 518 '诊断' 90
 
 # ── 右下角：开机自启 ──
 $script:RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -543,7 +543,7 @@ $chkAutoStart.Font = $FontBody
 $chkAutoStart.ForeColor = $C.Dim
 $chkAutoStart.AutoSize = $true
 $chkAutoStart.Cursor = [System.Windows.Forms.Cursors]::Hand
-$chkAutoStart.Location = New-Object System.Drawing.Point(626, 539)
+$chkAutoStart.Location = New-Object System.Drawing.Point(620, 539)
 $form.Controls.Add($chkAutoStart)
 
 $lblMem = New-Object System.Windows.Forms.Label
@@ -551,7 +551,7 @@ $lblMem.Text = '程序内存 -- MB'
 $lblMem.Font = $FontVer
 $lblMem.ForeColor = [System.Drawing.Color]::FromArgb(110, 110, 120)
 $lblMem.AutoSize = $true
-$lblMem.Location = New-Object System.Drawing.Point(628, 561)
+$lblMem.Location = New-Object System.Drawing.Point(622, 561)
 $form.Controls.Add($lblMem)
 
 $chkAutoStart.Add_CheckedChanged({
@@ -593,7 +593,7 @@ $lblHint = New-Object System.Windows.Forms.Label
 $lblHint.Text = '提示：游戏启动自动记录，退出/崩溃自动生成报告；鼠标移到曲线上可查看该点数值。'
 $lblHint.Font = $FontSmall
 $lblHint.ForeColor = $C.Dim
-$lblHint.Location = New-Object System.Drawing.Point(12, 578)
+$lblHint.Location = New-Object System.Drawing.Point(6, 578)
 $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
@@ -602,14 +602,14 @@ $lblDx = New-Object System.Windows.Forms.Label
 $lblDx.Text = 'DirectX 运行库：检查中…'
 $lblDx.Font = $FontSmall
 $lblDx.ForeColor = $C.Dim
-$lblDx.Location = New-Object System.Drawing.Point(12, 606)
+$lblDx.Location = New-Object System.Drawing.Point(6, 606)
 $lblDx.Size = New-Object System.Drawing.Size(560, 20)
 $form.Controls.Add($lblDx)
 
 $btnDxFix = New-Object System.Windows.Forms.Button
 $btnDxFix.Text = '检查 DirectX'
 $btnDxFix.Size = New-Object System.Drawing.Size(150, 28)
-$btnDxFix.Location = New-Object System.Drawing.Point(586, 602)
+$btnDxFix.Location = New-Object System.Drawing.Point(598, 602)
 $btnDxFix.FlatStyle = 'Flat'
 $btnDxFix.Font = $FontSmall
 $btnDxFix.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
@@ -619,10 +619,10 @@ $btnDxFix.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(4
 $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v3.8   数据目录: $Root"
+$lblVer.Text = "v3.9   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
-$lblVer.Location = New-Object System.Drawing.Point(12, 646)
+$lblVer.Location = New-Object System.Drawing.Point(6, 646)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
 $form.Controls.Add($lblVer)
 
@@ -1249,6 +1249,56 @@ if ($script:DpiScale -gt 1.01) {
     $sz = New-Object System.Drawing.SizeF($script:DpiScale, $script:DpiScale)
     $form.Scale($sz)
 }
+
+# ── 按缩放后的实际客户区重新排布，保证左右边距严格相等、右边不被裁掉 ──
+try {
+    $cw = $form.ClientSize.Width
+    $M = [int](7 * $script:DpiScale)      # 左右统一边距
+    $inner = $cw - 2 * $M
+    $gap = [int](12 * $script:DpiScale)
+
+    # 4 张卡片等宽铺满
+    $cardW = [int](($inner - 3 * $gap) / 4)
+    $rowGpu = @($cardTemp, $cardPower, $cardClock, $cardUtil)
+    $rowCpu = @($cardCpuTemp, $cardCpuClock, $cardCpuUtil, $cardCpuCores)
+    for ($k = 0; $k -lt 4; $k++) {
+        $x = $M + $k * ($cardW + $gap)
+        foreach ($row in @($rowGpu, $rowCpu)) {
+            $row[$k].Left = $x
+            $row[$k].Width = $cardW
+        }
+    }
+
+    # 两张曲线图撑满
+    $chart.Left = $M;      $chart.Width = $inner
+    $cpuChart.Left = $M;   $cpuChart.Width = $inner
+
+    # 左侧文字
+    foreach ($l in @($lblTitle, $lblSub, $lblCpuModel, $lblDetail, $lblStats, $lblHint, $lblDx, $lblVer)) {
+        if ($l) { $l.Left = $M; $l.Width = $inner }
+    }
+
+    # 右侧控件贴右边
+    $btnDxFix.Left = $cw - $M - $btnDxFix.Width
+    $chkAutoStart.Left = $cw - $M - $chkAutoStart.Width + [int](4 * $script:DpiScale)
+    $lblMem.Left = $chkAutoStart.Left + [int](4 * $script:DpiScale)
+
+    # 按钮行：5 个按钮按比例铺到「不压到右侧复选框」为止
+    $btns = @($btnStart, $btnStop, $btnLogs, $btnRep, $btnDiag)
+    $bw = $btns | ForEach-Object { $_.Width }
+    $bgap = [int](8 * $script:DpiScale)
+    $total = ($bw | Measure-Object -Sum).Sum + $bgap * ($btns.Count - 1)
+    $limit = $chkAutoStart.Left - $M
+    $scaleB = if ($total -gt ($limit - $M)) { ($limit - $M) / $total } else { 1.0 }
+    $bx = $M
+    foreach ($b in $btns) {
+        $b.Left = [int]$bx
+        $b.Width = [int]($b.Width * $scaleB)
+        $bx += $b.Width + $bgap
+    }
+}
+catch { }
+
 # ── 单实例保护：重复点图标只保留一个实例 ──
 if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
@@ -1484,6 +1534,127 @@ function Show-DxAction {
     Update-DxIndicator
 }
 
+function Get-ErrorCodeTable {
+    <# 读取 data\error-codes.txt（code|名称|含义|原因|建议），带缓存 #>
+    if ($script:CodeTable) { return $script:CodeTable }
+    $table = @{}
+    $path = Join-Path $Root 'data\error-codes.txt'
+    if (Test-Path $path) {
+        foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
+            if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) { continue }
+            $p = $line -split '\|'
+            if ($p.Count -ge 5) {
+                $table[$p[0].Trim().ToLower()] = [pscustomobject]@{
+                    Code   = $p[0].Trim()
+                    Name   = $p[1].Trim()
+                    Mean   = $p[2].Trim()
+                    Cause  = $p[3].Trim()
+                    Advice = $p[4].Trim()
+                }
+            }
+        }
+    }
+    $script:CodeTable = $table
+    return $table
+}
+
+function Get-CrashEvidence {
+    <# 从事件日志和崩溃转储里提取错误码，返回 @{ Code=..; Source=..; When=.. } #>
+    $found = New-Object System.Collections.Generic.List[object]
+    $seen = @{}
+    $since = (Get-Date).AddDays(-7)
+
+    $addCode = {
+        param($code, $source, $when)
+        $k = "$code|$source"
+        if ($seen.ContainsKey($k)) { return }
+        $seen[$k] = 1
+        $found.Add([pscustomobject]@{ Code = $code.ToLower(); Raw = $code; Source = $source; When = $when })
+    }
+
+    # 1) 系统日志：BugCheck / Kernel-Power / 显卡驱动
+    try {
+        $evts = Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = $since; Id = 41, 1001, 6008, 4101, 13, 14, 153 } -ErrorAction Stop |
+                Select-Object -First 60
+        foreach ($e in $evts) {
+            $when = $e.TimeCreated
+            if ($e.ProviderName -eq 'nvlddmkm') {
+                & $addCode "nvlddmkm-$($e.Id)" 'nvlddmkm' $when
+            }
+            elseif ($e.Id -eq 41) { & $addCode 'event-41' 'Kernel-Power' $when }
+            elseif ($e.Id -eq 4101) { & $addCode 'nvlddmkm-4101' 'Display' $when }
+            elseif ($e.Id -eq 1001) {
+                # BugCheck 消息里形如 0x00000116
+                $m = [regex]::Match($e.Message, '0x[0-9A-Fa-f]{8}')
+                if ($m.Success) { & $addCode $m.Value 'BugCheck' $when }
+            }
+        }
+    }
+    catch { }
+
+    # 2) LiveKernelEvent（BugCheck 1001 的另一来源）
+    try {
+        $lk = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-LiveDump'; StartTime = $since } -ErrorAction Stop | Select-Object -First 10
+        foreach ($e in $lk) {
+            if ($e.Message -match '141') { & $addCode 'livekernel-141' 'LiveKernelEvent' $e.TimeCreated }
+            if ($e.Message -match '117') { & $addCode 'livekernel-117' 'LiveKernelEvent' $e.TimeCreated }
+            if ($e.Message -match '1a1') { & $addCode 'livekernel-1a1' 'LiveKernelEvent' $e.TimeCreated }
+        }
+    }
+    catch { }
+
+    # 3) 最近的崩溃报告文本（里面有异常码 / DXGI 码）
+    try {
+        $rep = Get-ChildItem $RepDir -Filter 'crash-*.txt' -ErrorAction SilentlyContinue |
+               Sort-Object LastWriteTime -Descending | Select-Object -First 3
+        foreach ($f in $rep) {
+            $txt = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+            if (-not $txt) { continue }
+            foreach ($m in [regex]::Matches($txt, '0x[0-9A-Fa-f]{8}')) {
+                & $addCode $m.Value ('报告 ' + $f.Name) $f.LastWriteTime
+            }
+        }
+    }
+    catch { }
+
+    return $found
+}
+
+function Get-CodeExplanationLines {
+    <# 把证据翻译成人能看懂的解释，返回字符串数组 #>
+    $table = Get-ErrorCodeTable
+    $ev = Get-CrashEvidence
+    $out = New-Object System.Collections.Generic.List[string]
+
+    if ($ev.Count -eq 0) {
+        [void]$out.Add('  最近 7 天没有捕获到错误代码。')
+        return $out
+    }
+
+    $matched = 0
+    foreach ($e in $ev) {
+        $info = $table[$e.Code]
+        if ($info) {
+            $matched++
+            [void]$out.Add("  【$($info.Code)】$($info.Name)")
+            [void]$out.Add("      含义：$($info.Mean)")
+            [void]$out.Add("      常见原因：$($info.Cause)")
+            [void]$out.Add("      建议：$($info.Advice)")
+            [void]$out.Add('')
+        }
+    }
+
+    if ($matched -eq 0) {
+        [void]$out.Add('  捕获到这些代码，但本地代码库还没有对应说明：')
+        foreach ($e in $ev) { [void]$out.Add("    · $($e.Raw)（来源：$($e.Source)）") }
+        [void]$out.Add('')
+        [void]$out.Add('  可以把它发出来，加到 data\error-codes.txt 里就能自动解读。')
+        [void]$out.Add('')
+    }
+
+    return $out
+}
+
 function Get-TempProfile {
     <#
       分别统计「空闲」和「游戏内」的温度，用于基线对比。
@@ -1678,6 +1849,14 @@ function Get-HealthReportText {
             [void]$L_.Add("    · $($_.LastWriteTime.ToString('MM-dd HH:mm'))  $($_.Name)")
         }
     }
+    [void]$L_.Add('')
+
+    # ══ 4.5 错误代码解读 ══
+    [void]$L_.Add('【错误代码解读】')
+    try {
+        foreach ($cl in (Get-CodeExplanationLines)) { [void]$L_.Add($cl) }
+    }
+    catch { [void]$L_.Add('  （读取错误码失败）') }
     [void]$L_.Add('')
 
     # ══ 5. 温度基线对比 ══
@@ -1995,6 +2174,7 @@ if ($Shot) {
         Write-Output ("提示框: visible={0} size={1}x{2} pos=({3},{4}) text={5}" -f `
             $tip.Visible, $tip.Width, $tip.Height, $tip.Left, $tip.Top, $tip.Text)
     }
+    Write-Output ("SIZE: form={0}x{1} client={2}x{3} card4R={4} chartR={5} btnDxR={6} lblDxW={7}" -f $form.Width, $form.Height, $form.ClientSize.Width, $form.ClientSize.Height, ($cardUtil.Left + $cardUtil.Width), ($chart.Left + $chart.Width), ($btnDxFix.Left + $btnDxFix.Width), $lblDx.Width)
     $bmp2 = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
     $form.DrawToBitmap($bmp2, (New-Object System.Drawing.Rectangle(0, 0, $form.Width, $form.Height)))
     $bmp2.Save($Shot, [System.Drawing.Imaging.ImageFormat]::Png)
