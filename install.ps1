@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     把程序安装到当前用户目录（不需要管理员权限），并创建快捷方式和卸载入口。
-    安装位置：%LOCALAPPDATA%\Programs\GameCrashDiag
+    安装位置：D:\GameCrashDiag（可在安装时修改）
 #>
 [CmdletBinding()]
 param(
@@ -15,7 +15,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
-    $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\GameCrashDiag'
+    $InstallDir = 'D:\GameCrashDiag'
 }
 $src = $PSScriptRoot
 
@@ -48,6 +48,10 @@ foreach ($f in $files) {
 $toolSrc = Join-Path $src 'tools'
 if (Test-Path $toolSrc) {
     Copy-Item $toolSrc (Join-Path $InstallDir 'tools') -Recurse -Force
+}
+$toolZip = Join-Path $src 'tools.zip'
+if (Test-Path $toolZip) {
+    Expand-Archive -Path $toolZip -DestinationPath $InstallDir -Force
 }
 # 卸载脚本也带一份
 Copy-Item (Join-Path $src 'install.ps1') $InstallDir -Force -ErrorAction SilentlyContinue

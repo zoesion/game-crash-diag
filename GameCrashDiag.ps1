@@ -22,6 +22,7 @@ param(
     [switch]$Tray,
     [int]$ShowAfter = 0,
     [switch]$TestReport,
+    [switch]$TestDiagnosis,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -505,7 +506,7 @@ $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
 # ── 按钮 ──
-function New-Button($x, $text, $w = 135) {
+function New-Button($x, $text, $w = 120) {
     $b = New-Object System.Windows.Forms.Button
     $b.Text = $text
     $b.Location = New-Object System.Drawing.Point($x, 536)
@@ -526,9 +527,10 @@ function New-Button($x, $text, $w = 135) {
 }
 
 $btnStart = New-Button 12  '开始记录'
-$btnStop  = New-Button 158 '停止'
-$btnLogs  = New-Button 304 '打开数据目录'
-$btnRep   = New-Button 450 '打开崩溃报告'
+$btnStop  = New-Button 140 '停止'
+$btnLogs  = New-Button 268 '打开数据目录'
+$btnRep   = New-Button 396 '打开崩溃报告'
+$btnDiag  = New-Button 524 '诊断' 90
 
 # ── 右下角：开机自启 ──
 $script:RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -541,7 +543,7 @@ $chkAutoStart.Font = $FontBody
 $chkAutoStart.ForeColor = $C.Dim
 $chkAutoStart.AutoSize = $true
 $chkAutoStart.Cursor = [System.Windows.Forms.Cursors]::Hand
-$chkAutoStart.Location = New-Object System.Drawing.Point(598, 539)
+$chkAutoStart.Location = New-Object System.Drawing.Point(626, 539)
 $form.Controls.Add($chkAutoStart)
 
 $lblMem = New-Object System.Windows.Forms.Label
@@ -549,7 +551,7 @@ $lblMem.Text = '程序内存 -- MB'
 $lblMem.Font = $FontVer
 $lblMem.ForeColor = [System.Drawing.Color]::FromArgb(110, 110, 120)
 $lblMem.AutoSize = $true
-$lblMem.Location = New-Object System.Drawing.Point(600, 561)
+$lblMem.Location = New-Object System.Drawing.Point(628, 561)
 $form.Controls.Add($lblMem)
 
 $chkAutoStart.Add_CheckedChanged({
@@ -596,7 +598,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v3.0   数据目录: $Root"
+$lblVer.Text = "v3.1   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(12, 618)
@@ -1023,7 +1025,7 @@ function Update-UI {
         }
         $elapsed = [math]::Round(((Get-Date) - $script:GameStart).TotalMinutes, 1)
         if ($script:Recording) {
-            $lblStatus.Text = "● 记录中  $($elapsed) 分"
+            $lblStatus.Text = "● 游戏记录中  $($elapsed) 分"
         }
     }
     else {
@@ -1175,6 +1177,7 @@ $btnLogs.Add_Click({
     Open-FolderWithFeedback $btnLogs '打开数据目录' $target
 })
 $btnRep.Add_Click({ Open-FolderWithFeedback $btnRep '打开崩溃报告' $RepDir })
+$btnDiag.Add_Click({ Show-DiagnosisWindow })
 
 $btnStop.Enabled = $false
 
@@ -1197,8 +1200,12 @@ $form.Add_Shown({
     Update-UI
 })
 $form.Add_FormClosing({
-    $script:Timer.Stop()
-    if ($script:Recording) { Stop-Logging }
+    param($s, $e)
+    # 只在真正退出时停止；点 X 收托盘不算退出（有另一个处理器负责隐藏）
+    if ($script:ExitFlag) {
+        $script:Timer.Stop()
+        if ($script:Recording) { Stop-Logging }
+    }
 })
 
 # ── 按系统 DPI 等比缩放整个界面（字体是点数，天然跟着 DPI 走）──
@@ -1314,6 +1321,243 @@ if ($Shot) {
     exit 0
 }
 
+function Get-HealthReportText {
+    $L_ = New-Object System.Collections.Generic.List[string]
+
+    $now = Get-Date
+    $ln = ('=' * 60)
+    [void]$L_.Add($ln)
+    [void]$L_.Add("  游戏崩溃诊断器 · 诊断报告")
+    [void]$L_.Add(("  生成时间: " + $now.ToString('yyyy-MM-dd HH:mm:ss')))
+    [void]$L_.Add($ln)
+    [void]$L_.Add('')
+
+    # ══ 1. 硬件与驱动 ══
+    [void]$L_.Add('【硬件 / 驱动】')
+    $gpuName = '未知'; $drvVer = '未知'; $drvDate = $null
+    try {
+        $g = & nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>$null
+        if ($g) { $parts = $g -split ','; $gpuName = $parts[0].Trim(); $drvVer = $parts[1].Trim() }
+    } catch {}
+    try {
+        $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'NVIDIA|AMD|Radeon|Intel' } | Select-Object -First 1
+        if ($vc) {
+            if ($gpuName -eq '未知') { $gpuName = $vc.Name }
+            $drvDate = $vc.DriverDate
+        }
+    } catch {}
+    $cpuName = try { (Get-CimInstance Win32_Processor | Select-Object -First 1).Name.Trim() } catch { '未知' }
+
+    [void]$L_.Add("  显卡    : $gpuName")
+    [void]$L_.Add("  驱动    : $drvVer" + $(if ($drvDate) { "  (日期 $($drvDate.ToString('yyyy-MM-dd')))" } else { '' }))
+    [void]$L_.Add("  处理器  : $cpuName")
+
+    # 驱动年龄
+    if ($drvDate) {
+        $ageDays = [math]::Round(($now - $drvDate).TotalDays)
+        if ($ageDays -gt 365) {
+            [void]$L_.Add("  ⚠ 驱动已 $ageDays 天未更新（超过一年），建议更新到最新稳定版")
+        } elseif ($ageDays -gt 180) {
+            [void]$L_.Add("  驱动 $ageDays 天未更新，可以考虑更新")
+        } else {
+            [void]$L_.Add("  驱动较新（$ageDays 天），暂无更新必要")
+        }
+    }
+
+    # DirectX
+    $dxVer = $null
+    try { $dxVer = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\DirectX' -Name Version -ErrorAction Stop).Version } catch {}
+    if ($dxVer) {
+        [void]$L_.Add("  DirectX : $dxVer")
+    } else {
+        [void]$L_.Add("  ⚠ 读不到 DirectX 版本，可能缺少 DX 运行库")
+    }
+    $dx9 = Test-Path "$env:WINDIR\System32\d3dx9_43.dll"
+    [void]$L_.Add("  DX9 运行库: " + $(if ($dx9) { '已安装' } else { '未安装（老游戏可能需要）' }))
+
+    # 超频
+    $abRun = $null -ne (Get-Process MSIAfterburner -ErrorAction SilentlyContinue)
+    $abProfile = 'C:\Program Files (x86)\MSI Afterburner\Profiles'
+    $abOc = $false
+    if (Test-Path $abProfile) {
+        $f = Get-ChildItem $abProfile -Filter 'VEN_10DE*.cfg' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($f) {
+            $txt = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
+            if ($txt -match 'CoreClkBoost=(-?\d+)' -and [int]$matches[1] -ne 0) { $abOc = $true }
+        }
+    }
+    [void]$L_.Add("  超频软件: " + $(if ($abRun) { 'Afterburner 正在运行' } else { '未运行' }) + $(if ($abOc) { '（配置里有非零偏移）' } else { '' }))
+    [void]$L_.Add('')
+
+    # ══ 2. 当前状态 ══
+    [void]$L_.Add('【当前状态】')
+    if ($script:LastSample) {
+        $s = $script:LastSample
+        [void]$L_.Add(("  GPU : {0}°C   {1}W   {2}MHz   占用 {3}%   降频 {4}" -f $s.Temp, $s.Power, $s.ClockSm, $s.UtilGpu, $s.Throttle))
+    }
+    if ($script:CpuLast) {
+        $cu = $script:CpuLast
+        [void]$L_.Add(("  CPU : {0}°C   {1}MHz   占用 {2}%   活跃核心 {3}/{4}" -f $cu.Temp, $cu.MHz, $cu.Load, $cu.Active, $cu.Total))
+    }
+    [void]$L_.Add('')
+
+    # ══ 3. 遥测统计 ══
+    [void]$L_.Add('【本次记录统计】')
+    $maxT = 0; $maxP = 0; $capN = 0; $n = 0; $minC = 99999; $maxC = 0
+    if ($script:LogFile -and (Test-Path $script:LogFile)) {
+        foreach ($line in (Get-Content $script:LogFile | Select-Object -Skip 1)) {
+            $a = $line -split ','
+            if ($a.Count -lt 14) { continue }
+            $n++
+            $tv = 0.0; $pv = 0.0; $cv = 0
+            if ([double]::TryParse($a[1], [ref]$tv)) { if ($tv -gt $maxT) { $maxT = $tv } }
+            if ([double]::TryParse($a[2], [ref]$pv)) { if ($pv -gt $maxP) { $maxP = $pv } }
+            if ([int]::TryParse($a[3], [ref]$cv)) {
+                if ($cv -lt $minC) { $minC = $cv }
+                if ($cv -gt $maxC) { $maxC = $cv }
+            }
+            if ($a[10] -eq '1') { $capN++ }
+        }
+    }
+    $capPct = if ($n -gt 0) { $capN * 100.0 / $n } else { 0 }
+    if ($n -gt 0) {
+        [void]$L_.Add(("  采样 {0:N0} 条   最高温度 {1:N1}°C   最高功耗 {2:N0}W" -f $n, $maxT, $maxP))
+        [void]$L_.Add(("  核心频率 {0:N0} ~ {1:N0} MHz   撞功耗墙 {2:N0}% 的采样" -f $minC, $maxC, $capPct))
+    } else {
+        [void]$L_.Add('  （还没开始记录）')
+    }
+    [void]$L_.Add('')
+
+    # ══ 4. 崩溃历史 ══
+    [void]$L_.Add('【崩溃历史】')
+    $crashes = @(Get-ChildItem $RepDir -Filter 'crash-*.txt' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+    $recent7 = @($crashes | Where-Object { $_.LastWriteTime -ge $now.AddDays(-7) })
+    [void]$L_.Add("  累计崩溃报告: $($crashes.Count) 份    最近 7 天: $($recent7.Count) 份")
+    if ($crashes.Count -gt 0) {
+        $crashes | Select-Object -First 5 | ForEach-Object {
+            [void]$L_.Add("    · $($_.LastWriteTime.ToString('MM-dd HH:mm'))  $($_.Name)")
+        }
+    }
+    [void]$L_.Add('')
+
+    # ══ 5. 诊断结论 ══
+    [void]$L_.Add('【诊断结论】')
+    $issues = @()
+    $advice = @()
+
+    if ($maxT -ge 85) {
+        $issues += "GPU 温度偏高（最高 $([math]::Round($maxT))°C，超过 85°C 警戒线）"
+        $advice += '散热问题：清理风扇积灰、更换硅脂、笔记本垫高或加散热底座；也可以限制游戏帧率降低发热'
+    } elseif ($maxT -ge 78) {
+        $issues += "GPU 温度中等偏高（最高 $([math]::Round($maxT))°C）"
+        $advice += '注意散热通风，避免被褥遮挡出风口'
+    }
+    if ($script:CpuLast -and $script:CpuLast.Temp -ge 95) {
+        $issues += "CPU 温度过高（$($script:CpuLast.Temp)°C），可能触发降频"
+        $advice += 'CPU 散热不足：检查硅脂、电源模式不要锁太高功耗'
+    }
+    if ($n -gt 0 -and ($capN * 100.0 / $n) -ge 70 -and $maxP -gt 170) {
+        $issues += "长期撞功耗墙（$([math]::Round($capPct))% 采样），功耗峰值 $([math]::Round($maxP))W"
+        $advice += '降功耗：tools\power-cap.ps1 -Watts 145；或开垂直同步/限制帧率，减轻供电压力'
+    }
+    if ($abOc) {
+        $issues += '检测到 Afterburner 配置里有超频偏移'
+        $advice += '关闭超频：打开 Afterburner 点 Reset，或运行 tools\apply-fixes.ps1'
+    }
+    if ($recent7.Count -ge 3) {
+        $issues += "最近 7 天崩了 $($recent7.Count) 次，属于高频复发"
+        $advice += '高频复发说明不是偶发：优先按散热→超频→驱动顺序逐项排除'
+    } elseif ($recent7.Count -ge 1) {
+        $issues += "最近 7 天崩了 $($recent7.Count) 次"
+    }
+    if ($drvDate -and ($now - $drvDate).TotalDays -gt 365) {
+        $issues += '驱动超过一年未更新'
+        $advice += '更新显卡驱动到游戏官方推荐的版本'
+    }
+    if ($n -gt 0 -and $maxC -gt 0 -and ($maxC - $minC) -gt 400) {
+        $issues += "核心频率波动大（$([math]::Round($minC))~$([math]::Round($maxC)) MHz）"
+        $advice += '频率大幅抖动通常是撞温度墙或功耗墙，先解决散热再谈超频'
+    }
+
+    if ($issues.Count -eq 0) {
+        [void]$L_.Add('  ✅ 各项指标正常，没发现明显问题')
+    } else {
+        $i = 1
+        foreach ($x in $issues) { [void]$L_.Add("  $i. $x"); $i++ }
+    }
+    [void]$L_.Add('')
+
+    [void]$L_.Add('【建议】')
+    if ($advice.Count -eq 0) {
+        [void]$L_.Add('  · 继续观察；如果再次崩溃，回来点「诊断」查看新数据')
+        [void]$L_.Add('  · 崩溃后请保留 reports\ 目录里的报告')
+    } else {
+        $i = 1
+        foreach ($x in $advice) { [void]$L_.Add("  $i. $x"); $i++ }
+    }
+    [void]$L_.Add('')
+    [void]$L_.Add('提示：以上是程序基于遥测数据的自动判断，供参考。')
+    [void]$L_.Add('      若多次出现同类问题，建议把 reports 目录的报告一起提供给懂行的人。')
+
+    return $L_
+}
+
+function Show-DiagnosisWindow {
+    $lines = Get-HealthReportText
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = '诊断报告 - 游戏崩溃诊断器'
+    $dlg.Size = New-Object System.Drawing.Size(700, 620)
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
+    $dlg.ForeColor = [System.Drawing.Color]::FromArgb(228, 228, 231)
+    $dlg.Font = New-Object System.Drawing.Font('微软雅黑', 9)
+    $dlg.MinimizeBox = $false
+
+    $tb = New-Object System.Windows.Forms.TextBox
+    $tb.Multiline = $true
+    $tb.ReadOnly = $true
+    $tb.ScrollBars = 'Vertical'
+    $tb.Dock = 'Fill'
+    $tb.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 36)
+    $tb.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 226)
+    $tb.BorderStyle = 'None'
+    $tb.Font = New-Object System.Drawing.Font('Consolas', 9.5)
+    $tb.Text = ($lines -join "`r`n")
+    $tb.SelectionStart = 0
+    $tb.SelectionLength = 0
+
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = 'Bottom'
+    $panel.Height = 48
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
+
+    $btnCopy = New-Object System.Windows.Forms.Button
+    $btnCopy.Text = '复制报告'
+    $btnCopy.Size = New-Object System.Drawing.Size(100, 30)
+    $btnCopy.Location = New-Object System.Drawing.Point(470, 9)
+    $btnCopy.FlatStyle = 'Flat'
+    $btnCopy.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+    $btnCopy.ForeColor = [System.Drawing.Color]::FromArgb(228, 228, 231)
+    $btnCopy.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+    $btnCopy.Add_Click({ try { [System.Windows.Forms.Clipboard]::SetText($tb.Text); $btnCopy.Text = '已复制' } catch {} })
+
+    $btnClose = New-Object System.Windows.Forms.Button
+    $btnClose.Text = '关闭'
+    $btnClose.Size = New-Object System.Drawing.Size(90, 30)
+    $btnClose.Location = New-Object System.Drawing.Point(580, 9)
+    $btnClose.FlatStyle = 'Flat'
+    $btnClose.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+    $btnClose.ForeColor = [System.Drawing.Color]::FromArgb(228, 228, 231)
+    $btnClose.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+    $btnClose.Add_Click({ $dlg.Close() })
+
+    $panel.Controls.Add($btnCopy)
+    $panel.Controls.Add($btnClose)
+    $dlg.Controls.Add($tb)
+    $dlg.Controls.Add($panel)
+    [void]$dlg.ShowDialog($form)
+}
+
 # ════════════════════════════════ 托盘图标 ════════════════════════════════
 $script:ExitFlag = $false
 $trayIcon = New-Object System.Windows.Forms.NotifyIcon
@@ -1390,6 +1634,12 @@ $form.Add_FormClosing({
         } catch {}
     }
 })
+if ($TestDiagnosis) {
+    Start-Logging 'system'
+    for ($i = 0; $i -lt 4; $i++) { Update-UI; Start-Sleep -Milliseconds 350 }
+    Get-HealthReportText | ForEach-Object { Write-Output $_ }
+    exit 0
+}
 if ($Minimized) {
     $form.WindowState = 'Minimized'
     $form.ShowInTaskbar = $true
