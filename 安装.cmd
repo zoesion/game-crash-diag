@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 title сно╥╠ююёуО╤офВ - ╟╡в╟
 cd /d "%~dp0"
 

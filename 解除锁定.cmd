@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 title 解除文件锁定
 cd /d "%~dp0"
 echo.

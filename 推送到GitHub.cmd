@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 title ÍÆËÍµ½ GitHub - ÓÎÏ·±ÀÀ£Õï¶ÏÆ÷
 cd /d "%~dp0"
 

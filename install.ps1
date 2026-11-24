@@ -1,4 +1,17 @@
 ﻿<#
+exit 0
+    $targets = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -match 'GameCrashDiag\.ps1|BF6Monitor\.ps1' -and $_.ProcessId -ne $selfPid -and $_.ProcessId -ne $parentPid })
+    foreach ($t in $targets) { Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue }
+    # 等进程真正退出，否则文件句柄没释放，复制会失败
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline) {
+        $left = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match 'GameCrashDiag\.ps1|BF6Monitor\.ps1' -and $_.ProcessId -ne $selfPid -and $_.ProcessId -ne $parentPid })
+        if ($left.Count -eq 0) { break }
+        Start-Sleep -Milliseconds 300
+    }
+} catch {}
 .SYNOPSIS
     游戏崩溃诊断器 安装脚本
 
@@ -33,6 +46,20 @@ Write-Host '  ============================================' -ForegroundColor Cya
 Write-Host '   游戏崩溃诊断器  安装' -ForegroundColor Cyan
 Write-Host '  ============================================' -ForegroundColor Cyan
 Write-Host ''
+function Copy-WithRetry {
+    param($From, $To, [switch]$Recurse)
+    for ($try = 1; $try -le 4; $try++) {
+        try {
+            if ($Recurse) { Copy-Item $From $To -Recurse -Force -ErrorAction Stop }
+            else { Copy-Item $From $To -Force -ErrorAction Stop }
+            return $true
+        } catch {
+            if ($try -eq 4) { Write-Host ("        跳过（被占用）: " + (Split-Path $From -Leaf)) -ForegroundColor DarkYellow; return $false }
+            Start-Sleep -Milliseconds 800
+        }
+    }
+}
+
 
 # ── 1. 复制文件 ──
 Write-Host '  [1/4] 复制程序文件...' -ForegroundColor Yellow
@@ -43,19 +70,19 @@ foreach ($sub in 'logs','reports','backup') {
 $files = @('GameCrashDiag.ps1','ChartRenderer.cs','启动诊断器.vbs','调试启动.cmd','app.ico','README.md')
 foreach ($f in $files) {
     $p = Join-Path $src $f
-    if (Test-Path $p) { Copy-Item $p $InstallDir -Force }
+    if (Test-Path $p) { Copy-WithRetry $p $InstallDir | Out-Null }
 }
 $dataSrc = Join-Path $src 'data'
 if (Test-Path $dataSrc) {
-    Copy-Item $dataSrc (Join-Path $InstallDir 'data') -Recurse -Force
+    Copy-WithRetry $dataSrc (Join-Path $InstallDir 'data') -Recurse | Out-Null
 }
 $langSrc = Join-Path $src 'lang'
 if (Test-Path $langSrc) {
-    Copy-Item $langSrc (Join-Path $InstallDir 'lang') -Recurse -Force
+    Copy-WithRetry $langSrc (Join-Path $InstallDir 'lang') -Recurse | Out-Null
 }
 $toolSrc = Join-Path $src 'tools'
 if (Test-Path $toolSrc) {
-    Copy-Item $toolSrc (Join-Path $InstallDir 'tools') -Recurse -Force
+    Copy-WithRetry $toolSrc (Join-Path $InstallDir 'tools') -Recurse | Out-Null
 }
 $toolZip = Join-Path $src 'tools.zip'
 if (Test-Path $toolZip) {
