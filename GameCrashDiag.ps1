@@ -332,7 +332,7 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = '游戏崩溃诊断器'
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
-$form.Size = New-Object System.Drawing.Size(760, 744)
+$form.Size = New-Object System.Drawing.Size(760, 700)
 $form.MinimumSize = New-Object System.Drawing.Size(680, 660)
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $C.Bg
@@ -352,7 +352,7 @@ $lblTitle = New-Object System.Windows.Forms.Label
 $lblTitle.Text = '游戏崩溃诊断器'
 $lblTitle.Font = $FontTitle
 $lblTitle.ForeColor = $C.Text
-$lblTitle.Location = New-Object System.Drawing.Point(6, 8)
+$lblTitle.Location = New-Object System.Drawing.Point(44, 8)
 $lblTitle.AutoSize = $true
 $form.Controls.Add($lblTitle)
 
@@ -527,7 +527,7 @@ $lblStats = New-Object System.Windows.Forms.Label
 $lblStats.Text = '本次未记录'
 $lblStats.Font = $FontSmall
 $lblStats.ForeColor = $C.Dim
-$lblStats.Location = New-Object System.Drawing.Point(6, 516)
+$lblStats.Location = New-Object System.Drawing.Point(6, 518)
 $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
@@ -552,47 +552,59 @@ function New-Button($x, $text, $w = 120) {
     $b
 }
 
-$btnStart = New-Button 6   '开始记录'
-$btnStop  = New-Button 134 '停止'
-$btnLogs  = New-Button 262 '打开数据目录'
-$btnRep   = New-Button 390 '打开崩溃报告'
-$btnDiag  = New-Button 518 '诊断' 90
-
-# ── 右下角：开机自启 ──
+# ── 左上角：设置菜单 ──
 $script:RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $script:RunName = 'GameCrashDiag'
 $script:AutoStartInit = $false
 
-$chkAutoStart = New-Object System.Windows.Forms.CheckBox
-$chkAutoStart.Text = '开机自动启动'
-$chkAutoStart.Font = $FontBody
-$chkAutoStart.ForeColor = $C.Dim
-$chkAutoStart.AutoSize = $true
-$chkAutoStart.Cursor = [System.Windows.Forms.Cursors]::Hand
-$chkAutoStart.Location = New-Object System.Drawing.Point(620, 547)
-$form.Controls.Add($chkAutoStart)
+$btnMenu = New-Object System.Windows.Forms.Button
+$btnMenu.Text = '☰'
+$btnMenu.Size = New-Object System.Drawing.Size(32, 28)
+$btnMenu.Location = New-Object System.Drawing.Point(6, 10)
+$btnMenu.FlatStyle = 'Flat'
+$btnMenu.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 12)
+$btnMenu.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+$btnMenu.ForeColor = $C.Text
+$btnMenu.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+$btnMenu.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(56, 56, 68)
+$btnMenu.Cursor = [System.Windows.Forms.Cursors]::Hand
+$form.Controls.Add($btnMenu)
+$btnMenu.BringToFront()
 
-$lblMem = New-Object System.Windows.Forms.Label
-$lblMem.Text = '程序内存 -- MB'
-$lblMem.Font = $FontVer
-$lblMem.ForeColor = [System.Drawing.Color]::FromArgb(110, 110, 120)
-$lblMem.AutoSize = $true
-$lblMem.Location = New-Object System.Drawing.Point(622, 569)
-$form.Controls.Add($lblMem)
+$script:MainMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$script:MainMenu.Font = $FontBody
+$miStart = $script:MainMenu.Items.Add('开始记录')
+$miStop  = $script:MainMenu.Items.Add('停止记录')
+[void]$script:MainMenu.Items.Add('-')
+$miLogs  = $script:MainMenu.Items.Add('打开数据目录')
+$miRep   = $script:MainMenu.Items.Add('打开崩溃报告')
+$miDiag  = $script:MainMenu.Items.Add('诊断报告')
+[void]$script:MainMenu.Items.Add('-')
+$miAuto  = $script:MainMenu.Items.Add('开机自动启动')
+$miAuto.CheckOnClick = $true
+$miMem   = $script:MainMenu.Items.Add('程序内存 -- MB')
+$miMem.Enabled = $false
+[void]$script:MainMenu.Items.Add('-')
+$miAbout = $script:MainMenu.Items.Add('关于')
 
-$chkAutoStart.Add_CheckedChanged({
+$btnMenu.Add_Click({
+    try { $miAuto.Checked = Test-AutoStart } catch {}
+    $script:MainMenu.Show($btnMenu, (New-Object System.Drawing.Point(0, $btnMenu.Height)))
+})
+
+$miStart.Add_Click({ if (-not $script:Recording) { Start-Logging 'system'; $lblHint.Text = '已手动开始记录。' } })
+$miStop.Add_Click({ if ($script:Recording) { Stop-Logging; $lblHint.Text = '已停止记录。' } })
+$miLogs.Add_Click({ Open-FolderWithFeedback $null '打开数据目录' $LogDir })
+$miRep.Add_Click({ Open-FolderWithFeedback $null '打开崩溃报告' $RepDir })
+$miDiag.Add_Click({ Show-DiagnosisWindow })
+$miAbout.Add_Click({ Show-AboutDialog })
+
+$miAuto.Add_CheckedChanged({
     if (-not $script:AutoStartInit) { return }
-    $ok = Set-AutoStart $chkAutoStart.Checked
-    if (-not $ok) {
-        $lblHint.Text = '设置失败：无法写入注册表启动项。'
-        return
-    }
-    if ($chkAutoStart.Checked) {
-        $lblHint.Text = '已设置开机自动启动，开机后会在后台自动开始记录。'
-    }
-    else {
-        $lblHint.Text = '已取消开机自动启动。'
-    }
+    $ok = Set-AutoStart $miAuto.Checked
+    if (-not $ok) { $lblHint.Text = '设置失败：无法写入注册表启动项。'; return }
+    if ($miAuto.Checked) { $lblHint.Text = '已设置开机自动启动，开机后会在后台自动开始记录。' }
+    else { $lblHint.Text = '已取消开机自动启动。' }
 })
 function Test-AutoStart {
     $v = (Get-ItemProperty -Path $script:RunKey -Name $script:RunName -ErrorAction SilentlyContinue).$($script:RunName)
@@ -619,7 +631,7 @@ $lblHint = New-Object System.Windows.Forms.Label
 $lblHint.Text = '提示：游戏启动自动记录，退出/崩溃自动生成报告；鼠标移到曲线上可查看该点数值。'
 $lblHint.Font = $FontSmall
 $lblHint.ForeColor = $C.Dim
-$lblHint.Location = New-Object System.Drawing.Point(6, 586)
+$lblHint.Location = New-Object System.Drawing.Point(6, 546)
 $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
@@ -628,14 +640,14 @@ $lblDx = New-Object System.Windows.Forms.Label
 $lblDx.Text = 'DirectX 运行库：检查中…'
 $lblDx.Font = $FontSmall
 $lblDx.ForeColor = $C.Dim
-$lblDx.Location = New-Object System.Drawing.Point(6, 614)
+$lblDx.Location = New-Object System.Drawing.Point(6, 576)
 $lblDx.Size = New-Object System.Drawing.Size(540, 20)
 $form.Controls.Add($lblDx)
 
 $btnDxFix = New-Object System.Windows.Forms.Button
 $btnDxFix.Text = '检查 DirectX'
 $btnDxFix.Size = New-Object System.Drawing.Size(170, 30)
-$btnDxFix.Location = New-Object System.Drawing.Point(560, 610)
+$btnDxFix.Location = New-Object System.Drawing.Point(560, 572)
 $btnDxFix.FlatStyle = 'Flat'
 $btnDxFix.Font = $FontSmall
 $btnDxFix.BackColor = [System.Drawing.Color]::FromArgb(48, 48, 58)
@@ -646,10 +658,10 @@ $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
 $btnDxFix.BringToFront()
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.5   数据目录: $Root"
+$lblVer.Text = "v4.6   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
-$lblVer.Location = New-Object System.Drawing.Point(6, 656)
+$lblVer.Location = New-Object System.Drawing.Point(6, 614)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
 $form.Controls.Add($lblVer)
 
@@ -662,6 +674,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
+$script:AppVersion = 'v4.6'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -695,8 +708,8 @@ function Start-Logging([string]$Category = 'system') {
     $script:Recording = $true
     $script:TempHist.Clear()
     $script:PowerHist.Clear()
-    $btnStart.Enabled = $false
-    $btnStop.Enabled = $true
+    $miStart.Enabled = $false
+    $miStop.Enabled = $true
     $lblStatus.Text = '● 记录中'
     $lblStatus.ForeColor = $C.Accent
 }
@@ -704,8 +717,8 @@ function Start-Logging([string]$Category = 'system') {
 function Stop-Logging {
     if (-not $script:Recording) { return }
     $script:Recording = $false
-    $btnStart.Enabled = $true
-    $btnStop.Enabled = $false
+    $miStart.Enabled = $true
+    $miStop.Enabled = $false
     $lblStatus.Text = '○ 已停止'
     $lblStatus.ForeColor = $C.Dim
 }
@@ -1238,7 +1251,7 @@ $script:GameScanResult = $null
 
     try {
         $ws = [System.Diagnostics.Process]::GetCurrentProcess().WorkingSet64 / 1MB
-        $lblMem.Text = "程序内存 {0:N0} MB" -f $ws
+        $miMem.Text = "程序内存 {0:N0} MB" -f $ws
     } catch {}
 
     # 收到"显示窗口"请求（用户重复点了图标）
@@ -1350,38 +1363,14 @@ $cpuChart.Add_MouseLeave({
     Draw-Chart
 })
 # ════════════════════════════════ 事件绑定 ════════════════════════════════
-$btnStart.Add_Click({
-    if (-not $script:Recording) {
-        $cat = if ($script:GameName) { $script:GameName } else { 'system' }
-        Start-Logging $cat
-        $lblHint.Text = "已手动开始记录（logs\$cat\）。"
-    }
-})
-$btnStop.Add_Click({
-    if ($script:Recording) { Stop-Logging; $lblHint.Text = '已停止记录。' }
-})
 function Open-FolderWithFeedback($btn, $normalText, $path) {
-    $btn.Text = '打开中…'
-    $btn.Enabled = $false
-    $btn.Refresh()
-    [System.Windows.Forms.Application]::DoEvents()
     try {
         if (-not (Test-Path $path)) { New-Item -ItemType Directory -Force -Path $path | Out-Null }
         Start-Process -FilePath 'explorer.exe' -ArgumentList "`"$path`""
     } catch {}
-    $script:BtnRestore = @{ Btn = $btn; Text = $normalText; At = (Get-Date).AddMilliseconds(900) }
 }
 
-$btnLogs.Add_Click({
-    $cat = if ($script:GameName) { $script:GameName } else { 'system' }
-    $target = Join-Path $LogDir $cat
-    if (-not (Test-Path $target)) { $target = $LogDir }
-    Open-FolderWithFeedback $btnLogs '打开数据目录' $target
-})
-$btnRep.Add_Click({ Open-FolderWithFeedback $btnRep '打开崩溃报告' $RepDir })
-$btnDiag.Add_Click({ Show-DiagnosisWindow })
-
-$btnStop.Enabled = $false
+$miStop.Enabled = $false
 
 $script:Timer = New-Object System.Windows.Forms.Timer
 $script:Timer.Interval = $script:IntervalMs
@@ -1393,7 +1382,7 @@ $form.Add_Shown({
     # 启动时检测一次 DirectX（异步，不阻塞界面）
     try { Update-DxIndicator } catch {}
     try {
-        $chkAutoStart.Checked = Test-AutoStart
+        $miAuto.Checked = Test-AutoStart
         $script:AutoStartInit = $true
     } catch { $script:AutoStartInit = $true }
     $hasGame = $null -ne (Find-RunningGame)
@@ -1448,32 +1437,14 @@ try {
     $cpuChart.Left = $M;   $cpuChart.Width = $inner
 
     # 左侧文字
-    foreach ($l in @($lblTitle, $lblSub, $lblCpuModel, $lblDetail, $lblStats, $lblHint, $lblDx, $lblVer)) {
-        if ($l) { $l.Left = $M }
+    foreach ($l in @($lblSub, $lblCpuModel, $lblDetail, $lblStats, $lblHint, $lblDx, $lblVer)) {
+        if ($l) { $l.Left = $M; $l.Width = $inner }
     }
+    $lblTitle.Left = [int](44 * $script:DpiScale)
     $lblDx.Width = [int](540 * $script:DpiScale)
-    $btnDxFix.Left = [int](560 * $script:DpiScale)
-    if ($false) {
-    }
 
     # 右侧控件贴右边
     $btnDxFix.Left = $cw - $M - $btnDxFix.Width
-    $chkAutoStart.Left = $cw - $M - $chkAutoStart.Width + [int](4 * $script:DpiScale)
-    $lblMem.Left = $chkAutoStart.Left + [int](4 * $script:DpiScale)
-
-    # 按钮行：5 个按钮按比例铺到「不压到右侧复选框」为止
-    $btns = @($btnStart, $btnStop, $btnLogs, $btnRep, $btnDiag)
-    $bw = $btns | ForEach-Object { $_.Width }
-    $bgap = [int](8 * $script:DpiScale)
-    $total = ($bw | Measure-Object -Sum).Sum + $bgap * ($btns.Count - 1)
-    $limit = $chkAutoStart.Left - $M
-    $scaleB = if ($total -gt ($limit - $M)) { ($limit - $M) / $total } else { 1.0 }
-    $bx = $M
-    foreach ($b in $btns) {
-        $b.Left = [int]$bx
-        $b.Width = [int]($b.Width * $scaleB)
-        $bx += $b.Width + $bgap
-    }
 }
 catch { }
 
@@ -2160,6 +2131,99 @@ function Get-HealthReportText {
     [void]$L_.Add('      若多次出现同类问题，建议把 reports 目录的报告一起提供给懂行的人。')
 
     return $L_
+}
+
+function Show-AboutDialog {
+    $about = @(
+        '游戏崩溃诊断器  GameCrashDiag',
+        "版本 $($script:AppVersion)",
+        '',
+        '【它是什么】',
+        '一个轻量的本地监控与崩溃取证工具。游戏运行时自动记录显卡和 CPU 的',
+        '温度、功耗、频率、占用；游戏闪退后自动生成一份能直接看懂的诊断报告。',
+        '',
+        '【为什么会有它】',
+        '最早是为了排查《战地 6》的 DXGI_ERROR_DEVICE_HUNG 闪退写的。',
+        '在翻了几百个崩溃转储、显卡驱动事件和遥测数据之后，发现绝大多数问题',
+        '都集中在三个地方：超频不稳、散热余量不足、驱动与系统不匹配。',
+        '于是把这套排查流程做成了自动化工具，省掉人工比对数据的功夫。',
+        '',
+        '【能做什么】',
+        '· 实时监控 GPU / CPU 共 12 项指标，双曲线走势，鼠标悬停看具体数值和时间',
+        '· 自动识别正在运行的全屏游戏，按游戏名分目录记录，可回看最近 24 小时',
+        '· 游戏闪退时自动生成报告：判定结论、错误代码解读、温度基线对比',
+        '· 内置 25 条常见错误码释义（DXGI 错误、蓝屏码、显卡驱动事件）',
+        '· DirectX 组件完整性检查，缺组件可一键修复',
+        '· 全部数据保存在本地，不联网、不上传、不注入游戏进程',
+        '',
+        '【适合谁】',
+        '遇到游戏闪退、卡死、花屏，又看不懂 dump 文件的玩家。',
+        '报告是纯文本，可以直接贴到论坛，或者发给懂行的朋友。',
+        '',
+        '【关于结论】',
+        '诊断结论是基于遥测数据的规则判断，不是专业检修，仅供参考。',
+        '如果反复出现同类问题，建议结合报告去找维修或官方支持。',
+        '',
+        '【开源地址】',
+        'GitHub：（待补充）',
+        '',
+        '本工具只做监控与取证，不修改游戏文件，不涉及任何破解。'
+    )
+
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = '关于 游戏崩溃诊断器'
+    $dlg.Size = New-Object System.Drawing.Size(620, 560)
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
+    $dlg.ForeColor = $C.Text
+    $dlg.FormBorderStyle = 'FixedDialog'
+    $dlg.MaximizeBox = $false
+    $dlg.MinimizeBox = $false
+    try { $dlg.Icon = $form.Icon } catch {}
+
+    $tb = New-Object System.Windows.Forms.TextBox
+    $tb.Multiline = $true
+    $tb.ReadOnly = $true
+    $tb.ScrollBars = 'Vertical'
+    $tb.Dock = 'Fill'
+    $tb.BackColor = [System.Drawing.Color]::FromArgb(28, 28, 34)
+    $tb.ForeColor = [System.Drawing.Color]::FromArgb(214, 216, 222)
+    $tb.BorderStyle = 'None'
+    $tb.Font = New-Object System.Drawing.Font('微软雅黑', 9.5)
+    $tb.Text = ($about -join "`r`n")
+    $tb.SelectionStart = 0
+    $tb.SelectionLength = 0
+
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Dock = 'Bottom'
+    $panel.Height = 46
+    $panel.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
+
+    $btnOk = New-Object System.Windows.Forms.Button
+    $btnOk.Text = '关闭'
+    $btnOk.Size = New-Object System.Drawing.Size(96, 30)
+    $btnOk.Location = New-Object System.Drawing.Point(504, 8)
+    $btnOk.FlatStyle = 'Flat'
+    $btnOk.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+    $btnOk.ForeColor = $C.Text
+    $btnOk.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+    $btnOk.Add_Click({ $dlg.Close() })
+
+    $btnCopy = New-Object System.Windows.Forms.Button
+    $btnCopy.Text = '复制'
+    $btnCopy.Size = New-Object System.Drawing.Size(86, 30)
+    $btnCopy.Location = New-Object System.Drawing.Point(408, 8)
+    $btnCopy.FlatStyle = 'Flat'
+    $btnCopy.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
+    $btnCopy.ForeColor = $C.Text
+    $btnCopy.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
+    $btnCopy.Add_Click({ try { [System.Windows.Forms.Clipboard]::SetText($tb.Text); $btnCopy.Text = '已复制' } catch {} })
+
+    $panel.Controls.Add($btnCopy)
+    $panel.Controls.Add($btnOk)
+    $dlg.Controls.Add($tb)
+    $dlg.Controls.Add($panel)
+    [void]$dlg.ShowDialog($form)
 }
 
 function Show-DiagnosisWindow {
