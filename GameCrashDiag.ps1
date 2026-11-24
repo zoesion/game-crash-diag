@@ -619,7 +619,7 @@ $btnDxFix.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(4
 $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v3.9   数据目录: $Root"
+$lblVer.Text = "v4.0   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 646)
@@ -636,6 +636,7 @@ $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
 $script:MaxPoints  = [math]::Max(1000, [int](3000000 / [math]::Max(100, $IntervalMs)))          # 曲线缓存点数（1 秒 1 点 ≈ 2.8 小时）
+$script:HistTime   = New-Object 'System.Collections.Generic.List[datetime]'
 $script:TempHist   = New-Object 'System.Collections.Generic.List[double]'
 $script:PowerHist  = New-Object 'System.Collections.Generic.List[double]'
 $script:LastSample = $null
@@ -645,6 +646,7 @@ $script:GpuHover   = -1
 $script:CpuHover   = -1
 $script:LastHoverMs = 0
 $script:BtnRestore = $null
+$script:CpuHistTime = New-Object 'System.Collections.Generic.List[datetime]'
 $script:CpuTempHist = New-Object 'System.Collections.Generic.List[double]'
 $script:CpuFreqHist = New-Object 'System.Collections.Generic.List[double]'
 $script:LastCpuTemp = 0.0
@@ -1011,7 +1013,8 @@ function Update-UI {
 
     # 曲线历史始终更新（N 卡存温度/功耗，通用模式存占用/显存）
     if ($script:HasNvidia) {
-        if ($null -ne $s.Temp) { [void]$script:TempHist.Add($s.Temp) } else { [void]$script:TempHist.Add(0) }
+        [void]$script:HistTime.Add((Get-Date))
+    if ($null -ne $s.Temp) { [void]$script:TempHist.Add($s.Temp) } else { [void]$script:TempHist.Add(0) }
         if ($null -ne $s.Power) { [void]$script:PowerHist.Add($s.Power) } else { [void]$script:PowerHist.Add(0) }
     }
     else {
@@ -1019,12 +1022,15 @@ function Update-UI {
         if ($null -ne $s.MemUsed) { [void]$script:PowerHist.Add($s.MemUsed) } else { [void]$script:PowerHist.Add(0) }
     }
     while ($script:TempHist.Count -gt $script:MaxPoints) { $script:TempHist.RemoveAt(0) }
+    while ($script:HistTime.Count -gt $script:MaxPoints) { $script:HistTime.RemoveAt(0) }
     while ($script:PowerHist.Count -gt $script:MaxPoints) { $script:PowerHist.RemoveAt(0) }
 
     # CPU 曲线：沿用最近一次有效值，保证和 GPU 曲线等宽
+    [void]$script:CpuHistTime.Add((Get-Date))
     [void]$script:CpuTempHist.Add([double]$script:LastCpuTemp)
     [void]$script:CpuFreqHist.Add([double]$script:LastCpuFreq)
     while ($script:CpuTempHist.Count -gt $script:MaxPoints) { $script:CpuTempHist.RemoveAt(0) }
+    while ($script:CpuHistTime.Count -gt $script:MaxPoints) { $script:CpuHistTime.RemoveAt(0) }
     while ($script:CpuFreqHist.Count -gt $script:MaxPoints) { $script:CpuFreqHist.RemoveAt(0) }
 
     Draw-Chart
@@ -1131,8 +1137,13 @@ function Show-HoverTip([string]$which, $ctrl, [int]$x, [int]$y = 10) {
 
     $va = [double]$listA[$idx]
     $vb = [double]$listB[$idx]
-    $backSec = [int][math]::Round(($n - 1 - $idx) * ($script:IntervalMs / 1000.0))
-    $ago = if ($backSec -le 0) { '最新' } else { "-${backSec}s" }
+    # 显示该采样点的时间（时:分:秒）
+    $timeList = if ($isGpu) { $script:HistTime } else { $script:CpuHistTime }
+    $ago = '--:--:--'
+    if ($timeList -and $timeList.Count -gt 0) {
+        $ti = [math]::Min($idx, $timeList.Count - 1)
+        $ago = $timeList[$ti].ToString('HH:mm:ss')
+    }
 
     if ($isGpu) {
         $tip.Text = if ($script:HasNvidia) {
@@ -2135,11 +2146,13 @@ if ($Shot) {
         $script:TempHist.Clear(); $script:PowerHist.Clear()
         $rnd = New-Object System.Random 42
         for ($i = 0; $i -lt $FillPoints; $i++) {
+            [void]$script:HistTime.Add((Get-Date).AddSeconds(-($FillPoints - $i) * 0.5))
             [void]$script:TempHist.Add(58 + 4 * [math]::Sin($i / 90.0) + $rnd.NextDouble() * 0.8)
             [void]$script:PowerHist.Add(145 + 20 * [math]::Sin($i / 40.0) + $rnd.NextDouble() * 6)
         }
         $script:CpuTempHist.Clear(); $script:CpuFreqHist.Clear()
         for ($i = 0; $i -lt $FillPoints; $i++) {
+            [void]$script:CpuHistTime.Add((Get-Date).AddSeconds(-($FillPoints - $i) * 0.5))
             [void]$script:CpuTempHist.Add(64 + 6 * [math]::Sin($i / 55.0) + $rnd.NextDouble() * 1.5)
             [void]$script:CpuFreqHist.Add(3300 + 700 * [math]::Sin($i / 30.0) + $rnd.NextDouble() * 120)
         }
