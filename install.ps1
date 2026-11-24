@@ -73,6 +73,14 @@ $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
 $vbs = Join-Path $InstallDir '启动诊断器.vbs'
 $icon = Join-Path $InstallDir 'app.ico'
 
+function Get-AppVersion {
+    try {
+        $m = Select-String -Path (Join-Path $src 'GameCrashDiag.ps1') -Pattern "AppVersion = '([^']+)'" -ErrorAction Stop
+        if ($m) { return $m.Matches[0].Groups[1].Value.TrimStart('v') }
+    } catch {}
+    return '1.0'
+}
+
 function New-Shortcut($lnkPath, $target, $arguments, $workdir, $iconPath, $desc) {
     $s = $ws.CreateShortcut($lnkPath)
     $s.TargetPath = $target
@@ -114,7 +122,7 @@ New-Item -Path $regPath -Force | Out-Null
 $size = (Get-ChildItem $InstallDir -Recurse -File | Measure-Object Length -Sum).Sum
 $props = @{
     DisplayName     = '游戏崩溃诊断器'
-    DisplayVersion  = '1.1'
+    DisplayVersion  = (Get-AppVersion)
     Publisher       = '本地工具'
     InstallLocation = $InstallDir
     DisplayIcon     = $icon
