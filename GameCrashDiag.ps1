@@ -656,7 +656,7 @@ $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v5.0   数据目录: $Root"
+$lblVer.Text = "v5.1   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 572)
@@ -672,7 +672,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:AppVersion = 'v5.0'
+$script:AppVersion = 'v5.1'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -2230,14 +2230,27 @@ function Show-AboutDialog {
     $btnOk.Add_Click({ $dlg.Close() })
 
     $btnCopy = New-Object System.Windows.Forms.Button
-    $btnCopy.Text = '复制'
+    $btnCopy.Text = '复制诊断摘要'
     $btnCopy.Size = New-Object System.Drawing.Size(86, 30)
     $btnCopy.Location = New-Object System.Drawing.Point(408, 8)
     $btnCopy.FlatStyle = 'Flat'
     $btnCopy.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
     $btnCopy.ForeColor = $C.Text
     $btnCopy.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(64, 64, 78)
-    $btnCopy.Add_Click({ try { [System.Windows.Forms.Clipboard]::SetText($tb.Text); $btnCopy.Text = '已复制' } catch {} })
+    $btnCopy.Add_Click({
+        try {
+            $lines = @(
+                "游戏崩溃诊断器 $($script:AppVersion)",
+                "系统: " + (Get-CimInstance Win32_OperatingSystem).Caption + " " + [Environment]::OSVersion.Version.ToString(),
+                "显卡: " + $(try { (& nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>$null) -join '; ' } catch { '未知' }),
+                "DirectX: " + $(if ($script:DxStatus -and $script:DxStatus.Missing.Count -eq 0) { '12 项组件齐全' } elseif ($script:DxStatus) { "缺 $($script:DxStatus.Missing.Count) 项" } else { '未检测' }),
+                "崩溃记录: 累计 $(@(Get-ChildItem $RepDir -Filter 'crash-*.txt' -ErrorAction SilentlyContinue).Count) 次",
+                "数据目录: $Root"
+            )
+            [System.Windows.Forms.Clipboard]::SetText(($lines -join "`r`n"))
+            $btnCopy.Text = '已复制'
+        } catch { }
+    })
 
     $panel.Controls.Add($btnCopy)
     $panel.Controls.Add($btnOk)
