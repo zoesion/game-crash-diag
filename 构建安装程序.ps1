@@ -7,7 +7,7 @@
     把整个程序目录压成 app.zip 作为内嵌资源打进去。
 
     产物：游戏崩溃诊断器-安装程序.exe
-    双击后：解压到 %LOCALAPPDATA%\GameCrashDiag\setup → 静默安装到 D:\GameCrashDiag → 弹出完成提示
+    双击后：解压到 %LOCALAPPDATA%\GameCrashDiag\setup → 静默安装到 D:\Program\GameCrashDiag → 弹出完成提示
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\构建安装程序.ps1

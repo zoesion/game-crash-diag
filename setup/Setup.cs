@@ -106,7 +106,7 @@ static class Setup
             }
             catch { }
 
-            string finalDir = string.IsNullOrEmpty(targetDir) ? @"D:\GameCrashDiag" : targetDir;
+            string finalDir = string.IsNullOrEmpty(targetDir) ? @"D:\Program\GameCrashDiag" : targetDir;
             Log("done, dir=" + finalDir);
             try { Directory.Delete(work, true); } catch { }
             MessageBox.Show(
