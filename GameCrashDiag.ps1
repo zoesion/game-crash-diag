@@ -332,7 +332,7 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = '游戏崩溃诊断器'
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
-$form.Size = New-Object System.Drawing.Size(760, 706)
+$form.Size = New-Object System.Drawing.Size(760, 720)
 $form.MinimumSize = New-Object System.Drawing.Size(680, 660)
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $C.Bg
@@ -447,7 +447,7 @@ $unitUtil.Location = New-Object System.Drawing.Point(150, 12); $unitUtil.AutoSiz
 $cardUtil.Controls.Add($unitUtil)
 
 # ── 曲线图 ──
-$chartW, $chartH = 748, 108
+$chartW, $chartH = 748, 96
 $chart = New-Object System.Windows.Forms.PictureBox
 $chart.Location = New-Object System.Drawing.Point(6, 146)
 $chart.Size = New-Object System.Drawing.Size($chartW, $chartH)
@@ -459,8 +459,8 @@ $chart.Image = $null
 
 # ── CPU 走势图 ──
 $cpuChart = New-Object System.Windows.Forms.PictureBox
-$cpuChart.Location = New-Object System.Drawing.Point(6, 358)
-$cpuChart.Size = New-Object System.Drawing.Size($chartW, 110)
+$cpuChart.Location = New-Object System.Drawing.Point(6, 366)
+$cpuChart.Size = New-Object System.Drawing.Size($chartW, 96)
 $cpuChart.BackColor = $C.Card
 $form.Controls.Add($cpuChart)
 # 位图在 Draw-Chart 里按控件实际像素尺寸懒创建（DPI 缩放后尺寸会变）
@@ -476,15 +476,15 @@ $lblCpuModel = New-Object System.Windows.Forms.Label
 $lblCpuModel.Text = "CPU  ·  $cpuNameTxt    $cpuCoreTxt"
 $lblCpuModel.Font = $FontMid
 $lblCpuModel.ForeColor = $C.Dim
-$lblCpuModel.Location = New-Object System.Drawing.Point(8, 258)
+$lblCpuModel.Location = New-Object System.Drawing.Point(8, 266)
 $lblCpuModel.AutoSize = $true
 $form.Controls.Add($lblCpuModel)
 
 # ── CPU 四个卡片 ──
-$cardCpuTemp  = New-Card 6   278 178 74 'CPU 温度'
-$cardCpuClock = New-Card 196 278 178 74 'CPU 频率'
-$cardCpuUtil  = New-Card 386 278 178 74 'CPU 占用'
-$cardCpuCores = New-Card 576 278 178 74 '活跃核心'
+$cardCpuTemp  = New-Card 6   286 178 74 'CPU 温度'
+$cardCpuClock = New-Card 196 286 178 74 'CPU 频率'
+$cardCpuUtil  = New-Card 386 286 178 74 'CPU 占用'
+$cardCpuCores = New-Card 576 286 178 74 '活跃核心'
 
 $valCpuTemp  = Add-BigValue $cardCpuTemp  'v'
 $valCpuClock = Add-BigValue $cardCpuClock 'v'
@@ -509,7 +509,7 @@ foreach ($pair in @(
 # ── 时间轴滚动条（浏览器样式，自动跟随最新）──
 $script:FollowLive = $true
 $script:HistBar = New-Object System.Windows.Forms.HScrollBar
-$script:HistBar.Location = New-Object System.Drawing.Point(6, 468)
+$script:HistBar.Location = New-Object System.Drawing.Point(6, 486)
 $script:HistBar.Size = New-Object System.Drawing.Size(748, 16)
 $script:HistBar.SmallChange = 60
 $script:HistBar.LargeChange = 600
@@ -527,11 +527,30 @@ $script:HistBar.Add_Scroll({
     Draw-Chart
 })
 $form.Controls.Add($script:HistBar)
+$script:ColRed    = [System.Drawing.Color]::FromArgb(90, 155, 220)     # 功耗曲线（冷蓝）
+$script:ColPurple = [System.Drawing.Color]::FromArgb(150, 130, 220)    # 频率曲线（淡紫）
+# ── 曲线下方的最高/最低统计行（颜色对应曲线）──
+function New-StatLabel($x, $y, $color) {
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = '最高 --   最低 --'
+    $l.Font = $FontSmall
+    $l.ForeColor = $color
+    $l.AutoSize = $true
+    $l.Location = New-Object System.Drawing.Point($x, $y)
+    $form.Controls.Add($l)
+    return $l
+}
+
+$lblGpuStatT = New-StatLabel 6 244 $C.Accent
+$lblGpuStatP = New-StatLabel 250 244 $script:ColRed
+$lblCpuStatT = New-StatLabel 6 464 $C.Accent
+$lblCpuStatP = New-StatLabel 250 464 $script:ColPurple
+
 $lblDetail = New-Object System.Windows.Forms.Label
 $lblDetail.Text = 'CPU -- / -- / --      显存 -- / -- MB      降频 --'
 $lblDetail.Font = $FontSmall
 $lblDetail.ForeColor = $C.Dim
-$lblDetail.Location = New-Object System.Drawing.Point(6, 498)
+$lblDetail.Location = New-Object System.Drawing.Point(6, 512)
 $lblDetail.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblDetail)
 
@@ -539,7 +558,7 @@ $lblStats = New-Object System.Windows.Forms.Label
 $lblStats.Text = '本次未记录'
 $lblStats.Font = $FontSmall
 $lblStats.ForeColor = $C.Dim
-$lblStats.Location = New-Object System.Drawing.Point(6, 522)
+$lblStats.Location = New-Object System.Drawing.Point(6, 536)
 $lblStats.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblStats)
 
@@ -647,16 +666,16 @@ $lblHint = New-Object System.Windows.Forms.Label
 $lblHint.Text = '提示：游戏启动自动记录，退出/崩溃自动生成报告；鼠标移到曲线上可查看该点数值。'
 $lblHint.Font = $FontSmall
 $lblHint.ForeColor = $C.Dim
-$lblHint.Location = New-Object System.Drawing.Point(6, 546)
+$lblHint.Location = New-Object System.Drawing.Point(6, 560)
 $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.8   数据目录: $Root"
+$lblVer.Text = "v4.9   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
-$lblVer.Location = New-Object System.Drawing.Point(6, 626)
+$lblVer.Location = New-Object System.Drawing.Point(6, 640)
 $lblVer.Size = New-Object System.Drawing.Size(720, 18)
 $form.Controls.Add($lblVer)
 
@@ -669,7 +688,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:AppVersion = 'v4.8'
+$script:AppVersion = 'v4.9'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -921,8 +940,6 @@ function Write-CrashReport($exitTime, $isCrash = $true, $reason = '') {
 }
 
 $script:ColGray   = [System.Drawing.Color]::FromArgb(150, 150, 160)
-$script:ColRed    = [System.Drawing.Color]::FromArgb(90, 155, 220)     # 功耗曲线（冷蓝）
-$script:ColPurple = [System.Drawing.Color]::FromArgb(150, 130, 220)    # 频率曲线（淡紫）
 $script:ColOrange = [System.Drawing.Color]::FromArgb(255, 170, 70)
 
 function Ensure-ChartBitmaps {
@@ -1058,6 +1075,23 @@ function Draw-Chart {
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 'GPU 占用 (%)', '显存 (MB)', '%', 'MB', $script:GpuHover)
         }
+        # 更新最高/最低文本
+        try {
+            $mnA = ($aGpu | Measure-Object -Minimum).Minimum
+            $mxA = ($aGpu | Measure-Object -Maximum).Maximum
+            $mnB = ($bGpu | Measure-Object -Minimum).Minimum
+            $mxB = ($bGpu | Measure-Object -Maximum).Maximum
+            if ($script:HasNvidia) {
+                $lblGpuStatT.Text = "最高 {0:N0}{1}   最低 {2:N0}{1}" -f $mxA, '°C', $mnA
+                $lblGpuStatP.Text = "最高 {0:N0}{1}   最低 {2:N0}{1}" -f $mxB, 'W', $mnB
+            }
+            else {
+                $lblGpuStatT.Text = "最高 {0:N0}{1}   最低 {2:N0}{1}" -f $mxA, '%', $mnA
+                $lblGpuStatP.Text = "最高 {0:N0}MB   最低 {1:N0}MB" -f $mxB, $mnB
+            }
+        }
+        catch { }
+
         $chart.Refresh()
     }
 
@@ -1076,6 +1110,16 @@ function Draw-Chart {
             [ChartRenderer]::Render($script:cpuBmp, $aCpu, $bCpu, $cCnt,
                 $C.Card, $C.Grid, $C.Accent, $script:ColPurple, $C.Dim, $cInfo,
                 'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz', $script:CpuHover)
+            try {
+                $mnC = ($aCpu | Measure-Object -Minimum).Minimum
+                $mxC = ($aCpu | Measure-Object -Maximum).Maximum
+                $mnF = ($bCpu | Measure-Object -Minimum).Minimum
+                $mxF = ($bCpu | Measure-Object -Maximum).Maximum
+                $lblCpuStatT.Text = "最高 {0:N0}{1}   最低 {2:N0}{1}" -f $mxC, '°C', $mnC
+                $lblCpuStatP.Text = "最高 {0:N0}{1}   最低 {2:N0}{1}" -f $mxF, 'MHz', $mnF
+            }
+            catch { }
+
             $cpuChart.Refresh()
         }
     }

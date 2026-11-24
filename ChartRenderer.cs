@@ -1,4 +1,4 @@
-﻿// BF6 监控器 —— 曲线绘制核心（编译成 .NET 类型，避免 PowerShell 逐点解释的开销）
+// BF6 监控器 —— 曲线绘制核心（编译成 .NET 类型，避免 PowerShell 逐点解释的开销）
 // 由 BF6Monitor.ps1 通过 Add-Type 加载
 using System;
 using System.Collections.Generic;
@@ -135,22 +135,7 @@ public static class ChartRenderer
                 }
             }
 
-            // 右侧刻度（按实际文字宽度排布，DPI 放大后也不会重叠）
-            string sMaxA = string.Format("{0:N0}{1}", maxA, unitA);
-            string sMinA = string.Format("{0:N0}{1}", minA, unitA);
-            string sMaxB = string.Format("{0:N0}{1}", maxB, unitB);
-            float wMaxA = g.MeasureString(sMaxA, font).Width;
-            float wMaxB = g.MeasureString(sMaxB, font).Width;
-            // 右上角刻度标签加底衬，避免与曲线重叠
-            float labX = w - wMaxA - wMaxB - 40f;
-            float labW = wMaxA + wMaxB + 40f;
-            using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(220, card)))
-            {
-                g.FillRectangle(bgBrush, labX - 4f, 22f, labW, 19f);
-            }
-            g.DrawString(sMaxA, font, brushDim, w - wMaxA - 8f, 25f);
-            g.DrawString(sMinA, font, brushDim, w - wMaxA - 8f, h - 20f);
-            g.DrawString(sMaxB, font, brushB, w - wMaxA - wMaxB - 34f, 25f);
+            // 最高/最低不再画在图内，改由界面文本行展示
         }
     }
 }
