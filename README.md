@@ -457,8 +457,35 @@ GameCrashDiag.ps1 -Shot out.png       # 离屏截图
 - 因使用本工具造成的任何直接或间接损失，作者不承担责任
 - 设备仍在保修期内时，拆机/清灰/换硅脂请优先联系官方售后
 
-
+## 版本号规则
 
 - 每改一次（修个 bug、调个界面）**+0.01**：v5.6 → v5.61 → v5.62
 - 攒够一批功能、或者有不兼容变化时才 **+0.1**：v5.x → v6.0
 - 主版本号（v6.0）代表一次真正的改版，不是日常更新
+
+---
+
+## License
+
+MIT License — Copyright (c) 2026 GameCrashDiag contributors.
+
+- Free to use, modify and distribute, **including commercial use**
+- The only requirement: keep the copyright notice and the LICENSE file
+- Provided **as is**, without warranty of any kind
+
+Commercial use is permitted by MIT. In practice this is unlikely to become a commercial
+product: the core is "read nvidia-smi + performance counters + apply rules", which has no
+technical moat, and free alternatives already exist (HWiNFO, Afterburner, Rigsight).
+
+## Disclaimer
+
+- This tool only **reads** system information. It does not modify game files, inject
+  into game processes, or upload anything.
+- The diagnosis is **rule-based inference** over telemetry, not professional repair
+  advice. Treat it as a reference only.
+- "Repair DirectX" downloads and runs the **official Microsoft** runtime, or executes
+  DISM with administrator rights. Confirm before running it.
+- The author is not liable for any direct or indirect damage caused by using this tool.
+- If your device is still under warranty, contact official support before opening the
+  laptop or replacing thermal paste.
+
