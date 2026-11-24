@@ -598,7 +598,7 @@ $lblHint.Size = New-Object System.Drawing.Size(720, 20)
 $form.Controls.Add($lblHint)
 
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v3.2   数据目录: $Root"
+$lblVer.Text = "v3.3   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(12, 618)
@@ -1061,6 +1061,13 @@ $script:GameScanResult = $null
         $lblMem.Text = "程序内存 {0:N0} MB" -f $ws
     } catch {}
 
+    # 收到"显示窗口"请求（用户重复点了图标）
+    $reqFile = Join-Path $Root 'show.request'
+    if (Test-Path -LiteralPath $reqFile) {
+        Remove-Item -LiteralPath $reqFile -Force -ErrorAction SilentlyContinue
+        Show-MainWindow
+    }
+
     if ($script:BtnRestore -and (Get-Date) -ge $script:BtnRestore.At) {
         $script:BtnRestore.Btn.Text = $script:BtnRestore.Text
         $script:BtnRestore.Btn.Enabled = $true
@@ -1223,8 +1230,12 @@ if ($script:DpiScale -gt 1.01) {
 if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
-        # 已有实例：把它的窗口拉到前台，然后静默退出（开机自启时不打扰）
+        # 已有实例：写信号文件让它把窗口弹出来，然后静默退出
         if (-not $Tray) {
+        try {
+            $reqFile = Join-Path $Root 'show.request'
+            Set-Content -Path $reqFile -Value (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') -Encoding UTF8 -Force
+        } catch {}
         try {
             Add-Type -Namespace W32Win -Name Fg -MemberDefinition @"
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
