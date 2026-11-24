@@ -339,6 +339,10 @@ $form.BackColor = $C.Bg
 $form.ForeColor = $C.Text
 $form.Font = $FontUI
 $form.FormBorderStyle = 'FixedSingle'
+try {
+    $icoPath = Join-Path $Root 'app.ico'
+    if (Test-Path $icoPath) { $form.Icon = New-Object System.Drawing.Icon($icoPath) }
+} catch { }
 $form.MaximizeBox = $false
 
 $gpuInfo = Get-GpuInfo
@@ -642,7 +646,7 @@ $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
 $btnDxFix.BringToFront()
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.4   数据目录: $Root"
+$lblVer.Text = "v4.5   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 656)
@@ -909,7 +913,8 @@ function Write-CrashReport($exitTime, $isCrash = $true, $reason = '') {
 }
 
 $script:ColGray   = [System.Drawing.Color]::FromArgb(150, 150, 160)
-$script:ColRed    = [System.Drawing.Color]::FromArgb(235, 86, 79)      # 功耗曲线
+$script:ColRed    = [System.Drawing.Color]::FromArgb(90, 155, 220)     # 功耗曲线（冷蓝）
+$script:ColPurple = [System.Drawing.Color]::FromArgb(150, 130, 220)    # 频率曲线（淡紫）
 $script:ColOrange = [System.Drawing.Color]::FromArgb(255, 170, 70)
 
 function Ensure-ChartBitmaps {
@@ -1042,7 +1047,7 @@ function Draw-Chart {
         }
         else {
             [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
-                $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $infoTxt,
+                $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 'GPU 占用 (%)', '显存 (MB)', '%', 'MB', $script:GpuHover)
         }
         $chart.Refresh()
@@ -1061,7 +1066,7 @@ function Draw-Chart {
                 $cInfo = ("{0} ~ {1}  （已暂停，共 {2:N0} 点）" -f $t0.ToString('HH:mm:ss'), $t1.ToString('HH:mm:ss'), $cCnt)
             }
             [ChartRenderer]::Render($script:cpuBmp, $aCpu, $bCpu, $cCnt,
-                $C.Card, $C.Grid, $C.Accent, $script:ColOrange, $C.Dim, $cInfo,
+                $C.Card, $C.Grid, $C.Accent, $script:ColPurple, $C.Dim, $cInfo,
                 'CPU 温度 (°C)', '频率 (MHz)', '°C', 'MHz', $script:CpuHover)
             $cpuChart.Refresh()
         }
