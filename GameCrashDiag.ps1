@@ -67,7 +67,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.63'
+$script:AppVersion = 'v5.64'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1194,7 +1194,7 @@ function Update-UI {
 
     $ramTxt = if ($null -ne $cpu.RamPct) { "{0}%" -f $cpu.RamPct } else { "--" }
     $pstateTxt = switch -Regex ($s.PState) {
-        '^P0$' { 'P0 满速' }
+        '^P0$' { 'P0' }
         '^P[1-3]$' { "$($s.PState) 降频" }
         '^P[4-9]$' { "$($s.PState) 待机" }
         default { "$($s.PState)" }
@@ -1712,8 +1712,32 @@ function Update-DxIndicator {
 function Show-DxAction {
     <# 点击主界面 DirectX 按钮：完整就给说明，不完整就修复 #>
     $dx = Get-DxStatus
-    if ($dx.Missing.Count -eq 0) {
-        $lines = @(
+      if ($dx.Missing.Count -eq 0) {
+        $en = ($script:T.LanguageCode -eq 'en-US')
+        $lines = if ($en) { @(
+            'DirectX runtime check: complete',
+            '',
+            'All 12 components installed:',
+            '  - DirectX 12 (d3d12.dll / d3d12core.dll)',
+            '  - DirectX 11 (d3d11.dll)',
+            '  - DirectX 10.1 (d3d10_1.dll)',
+            '  - DirectX 9 (d3d9.dll)',
+            '  - DXGI (dxgi.dll)',
+            '  - Shader compiler (d3dcompiler_47.dll)',
+            '  - DX9/10/11 extension libraries (d3dx9_43 / d3dx10_43 / d3dx11_43)',
+            '  - Gamepad support (XInput1_4.dll)',
+            '  - Audio engine (xaudio2_9.dll)',
+            '',
+            'Everything is present, so a missing DirectX component is NOT the cause.',
+            '',
+            'If the game still reports DirectX errors, check in this order:',
+            '  1. Game files - verify integrity in Steam / EA App',
+            '  2. GPU driver - clean uninstall with DDU, then install the latest',
+            '  3. System files - run sfc /scannow as administrator',
+            '  4. System image - DISM /Online /Cleanup-Image /RestoreHealth as administrator',
+            '',
+            'Click Yes to force a reinstall of the DirectX runtime.'
+        ) } else { @(
             'DirectX 运行库检查结果：完整',
             '',
             "已安装的 12 项组件：",
@@ -1736,8 +1760,10 @@ function Show-DxAction {
             '  4. 系统映像 —— 以管理员运行 DISM /Online /Cleanup-Image /RestoreHealth',
             '',
             '如果你想强制重装一遍 DirectX 运行库，点"是"。'
-        )
-        $r = [System.Windows.Forms.MessageBox]::Show(($lines -join "`r`n"), 'DirectX 检查结果', 'YesNo', 'Information')
+
+        ) }
+        $title = if ($en) { 'DirectX check result' } else { 'DirectX 检查结果' }
+        $r = [System.Windows.Forms.MessageBox]::Show(($lines -join "`r`n"), $title, 'YesNo', 'Information')
         if ($r -eq 'Yes') {
             $script:DxForceReinstall = $true
             Invoke-DxRepair -Force
