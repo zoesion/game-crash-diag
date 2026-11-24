@@ -658,7 +658,7 @@ $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v5.4   数据目录: $Root"
+$lblVer.Text = "v5.5   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 572)
@@ -674,7 +674,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:AppVersion = 'v5.4'
+$script:AppVersion = 'v5.5'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -1730,72 +1730,88 @@ function Get-ErrorCodeTable {
 }
 
 function Get-CrashEvidence {
-    <# 从事件日志和崩溃转储里提取错误码，返回 @{ Code=..; Source=..; When=.. } #>
-    $found = New-Object System.Collections.Generic.List[object]
-    $seen = @{}
+    <# 从事件日志和崩溃报告提取错误码，带出现次数与最近时间 #>
+    $found = @{}
     $since = (Get-Date).AddDays(-7)
 
     $addCode = {
-        param($code, $source, $when)
-        $k = "$code|$source"
-        if ($seen.ContainsKey($k)) { return }
-        $seen[$k] = 1
-        $found.Add([pscustomobject]@{ Code = $code.ToLower(); Raw = $code; Source = $source; When = $when })
+        param($code, $source, $provider, $eventId, $when)
+        $k = "$code"
+        if (-not $found.ContainsKey($k)) {
+            $found[$k] = [pscustomobject]@{
+                Code = $code.ToLower(); Raw = $code
+                Count = 0; Last = $when; Source = $source
+                Provider = $provider; EventId = $eventId
+            }
+        }
+        $e = $found[$k]
+        $e.Count++
+        if ($when -gt $e.Last) { $e.Last = $when }
     }
 
-    # 1) 系统日志：BugCheck / Kernel-Power / 显卡驱动
+    # 1) 系统日志：显卡驱动 / 蓝屏 / 意外断电
     try {
-        $evts = Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = $since; Id = 41, 1001, 6008, 4101, 13, 14, 153 } -ErrorAction Stop |
-                Select-Object -First 60
+        $evts = Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = $since } -ErrorAction Stop |
+                Where-Object { $_.ProviderName -eq 'nvlddmkm' -or $_.Id -in 41, 1001, 4101 } |
+                Select-Object -First 2000
         foreach ($e in $evts) {
-            $when = $e.TimeCreated
             if ($e.ProviderName -eq 'nvlddmkm') {
-                & $addCode "nvlddmkm-$($e.Id)" 'nvlddmkm' $when
+                & $addCode "nvlddmkm-$($e.Id)" '系统事件日志' 'nvlddmkm' $e.Id $e.TimeCreated
             }
-            elseif ($e.Id -eq 41) { & $addCode 'event-41' 'Kernel-Power' $when }
-            elseif ($e.Id -eq 4101) { & $addCode 'nvlddmkm-4101' 'Display' $when }
+            elseif ($e.Id -eq 41) {
+                & $addCode 'event-41' '系统事件日志' 'Kernel-Power' 41 $e.TimeCreated
+            }
+            elseif ($e.Id -eq 4101) {
+                & $addCode 'nvlddmkm-4101' '系统事件日志' 'Display' 4101 $e.TimeCreated
+            }
             elseif ($e.Id -eq 1001) {
-                # BugCheck 消息里形如 0x00000116
                 $m = [regex]::Match($e.Message, '0x[0-9A-Fa-f]{8}')
-                if ($m.Success) { & $addCode $m.Value 'BugCheck' $when }
+                if ($m.Success) { & $addCode $m.Value '系统事件日志' 'BugCheck' 1001 $e.TimeCreated }
             }
         }
     }
     catch { }
 
-    # 2) LiveKernelEvent（BugCheck 1001 的另一来源）
+    # 2) LiveKernelEvent
     try {
-        $lk = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-LiveDump'; StartTime = $since } -ErrorAction Stop | Select-Object -First 10
+        $lk = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-LiveDump'; StartTime = $since } -ErrorAction SilentlyContinue
         foreach ($e in $lk) {
-            if ($e.Message -match '141') { & $addCode 'livekernel-141' 'LiveKernelEvent' $e.TimeCreated }
-            if ($e.Message -match '117') { & $addCode 'livekernel-117' 'LiveKernelEvent' $e.TimeCreated }
-            if ($e.Message -match '1a1') { & $addCode 'livekernel-1a1' 'LiveKernelEvent' $e.TimeCreated }
+            foreach ($pat in '141', '117', '1a1') {
+                if ($e.Message -match $pat) { & $addCode "livekernel-$pat" '系统事件日志' 'LiveKernelEvent' $pat $e.TimeCreated }
+            }
         }
     }
     catch { }
 
-    # 3) 最近的崩溃报告文本（里面有异常码 / DXGI 码）
+    # 3) 崩溃报告文本里的异常码
     try {
         $rep = Get-ChildItem $RepDir -Filter 'crash-*.txt' -ErrorAction SilentlyContinue |
-               Sort-Object LastWriteTime -Descending | Select-Object -First 3
+               Sort-Object LastWriteTime -Descending | Select-Object -First 5
         foreach ($f in $rep) {
             $txt = Get-Content $f.FullName -Raw -ErrorAction SilentlyContinue
             if (-not $txt) { continue }
             foreach ($m in [regex]::Matches($txt, '0x[0-9A-Fa-f]{8}')) {
-                & $addCode $m.Value ('报告 ' + $f.Name) $f.LastWriteTime
+                & $addCode $m.Value ("崩溃报告 " + $f.Name) 'bench' 0 $f.LastWriteTime
             }
         }
     }
     catch { }
 
-    return $found
+    return @($found.Values | Sort-Object Last -Descending)
 }
 
 function Get-CodeExplanationLines {
-    <# 把证据翻译成人能看懂的解释，返回字符串数组 #>
+    <# 把证据翻译成人能看懂的解释，标明来源、次数、时间 #>
     $table = Get-ErrorCodeTable
     $ev = Get-CrashEvidence
     $out = New-Object System.Collections.Generic.List[string]
+
+    $reportCount = @(Get-ChildItem $RepDir -Filter 'crash-*.txt' -ErrorAction SilentlyContinue).Count
+    [void]$out.Add('  数据来源：Windows 系统事件日志（最近 7 天） + reports 目录的崩溃报告')
+    if ($reportCount -eq 0) {
+        [void]$out.Add('  本次没有崩溃报告，下面都是系统日志里的历史驱动事件，不是这段时间新发生的')
+    }
+    [void]$out.Add('')
 
     if ($ev.Count -eq 0) {
         [void]$out.Add('  最近 7 天没有捕获到错误代码。')
@@ -1805,19 +1821,26 @@ function Get-CodeExplanationLines {
     $matched = 0
     foreach ($e in $ev) {
         $info = $table[$e.Code]
-        if ($info) {
-            $matched++
-            [void]$out.Add("  【$($info.Code)】$($info.Name)")
-            [void]$out.Add("      含义：$($info.Mean)")
-            [void]$out.Add("      常见原因：$($info.Cause)")
-            [void]$out.Add("      建议：$($info.Advice)")
-            [void]$out.Add('')
-        }
+        if (-not $info) { continue }
+        $matched++
+
+        $ago = [math]::Round(((Get-Date) - $e.Last).TotalHours, 1)
+        $agoTxt = if ($ago -lt 1) { "$([math]::Round($ago * 60)) 分钟前" }
+                  elseif ($ago -lt 48) { "$([math]::Round($ago)) 小时前" }
+                  else { "$([math]::Round($ago / 24)) 天前" }
+
+        [void]$out.Add("  【$($info.Code)】$($info.Name)")
+        [void]$out.Add("      记录：出现 $($e.Count) 次，最近一次 $($e.Last.ToString('MM-dd HH:mm'))（$agoTxt）")
+        [void]$out.Add("      来源：$($e.Source)" + $(if ($e.Provider -eq 'bench') { '（本次软件生成）' } else { "（$($e.Provider) 事件 ID $($e.EventId)）" }))
+        [void]$out.Add("      含义：$($info.Mean)")
+        [void]$out.Add("      常见原因：$($info.Cause)")
+        [void]$out.Add("      建议：$($info.Advice)")
+        [void]$out.Add('')
     }
 
     if ($matched -eq 0) {
         [void]$out.Add('  捕获到这些代码，但本地代码库还没有对应说明：')
-        foreach ($e in $ev) { [void]$out.Add("    · $($e.Raw)（来源：$($e.Source)）") }
+        foreach ($e in $ev) { [void]$out.Add("    · $($e.Raw)（$($e.Source)，$($e.Count) 次）") }
         [void]$out.Add('')
         [void]$out.Add('  可以把它发出来，加到 data\error-codes.txt 里就能自动解读。')
         [void]$out.Add('')
@@ -1825,7 +1848,6 @@ function Get-CodeExplanationLines {
 
     return $out
 }
-
 function Get-TempProfile {
     <#
       分别统计「空闲」和「游戏内」的温度，用于基线对比。
