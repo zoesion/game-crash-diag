@@ -1,178 +1,389 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 static class Setup
 {
-    static string LogPath;
+    const string AppTitle = "游戏崩溃诊断器 安装程序";
+    const string DefaultDir = @"D:\Program Files\GameCrashDiag";
+    const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string ApprovePath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 
-    static void Log(string msg)
+    static string LogPath;
+    static void Log(string m)
     {
-        try
-        {
-            if (LogPath != null) File.AppendAllText(LogPath, DateTime.Now.ToString("HH:mm:ss") + " " + msg + "\r\n");
-        }
+        try { if (LogPath != null) File.AppendAllText(LogPath, DateTime.Now.ToString("HH:mm:ss") + " " + m + "\r\n"); }
         catch { }
     }
 
-    // 依次尝试可写目录。优先 exe 同目录（通常不受 Defender 受控文件夹访问限制）。
-    static string PickWorkDir()
+    static bool IsAdmin()
     {
-        string baseName = "GameCrashDiag-setup-" + Guid.NewGuid().ToString("N").Substring(0, 8);
-        string exeDir = null;
-        try { exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location); } catch { }
-
-        string[] candidates = new string[]
+        try
         {
-            exeDir == null ? null : Path.Combine(exeDir, baseName),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GameCrashDiag", "setup", baseName),
-            Path.Combine(Path.GetTempPath(), baseName),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "GameCrashDiag-setup", baseName)
-        };
-
-        string err = null;
-        foreach (string dir in candidates)
-        {
-            if (string.IsNullOrEmpty(dir)) continue;
-            try
-            {
-                Directory.CreateDirectory(dir);
-                string probe = Path.Combine(dir, ".w");
-                File.WriteAllText(probe, "ok");
-                File.Delete(probe);
-                return dir;
-            }
-            catch (Exception ex) { if (err == null) err = ex.Message; }
+            using (WindowsIdentity id = WindowsIdentity.GetCurrent())
+                return new WindowsPrincipal(id).IsInRole(WindowsBuiltInRole.Administrator);
         }
-
-        throw new Exception(
-            "找不到可写目录。\r\n\r\n" +
-            "常见原因：Windows Defender 的「受控文件夹访问」拦截了未签名程序。\r\n" +
-            "解决办法（任选其一）：\r\n" +
-            "  1. 用同目录下的「安装.cmd」安装（PowerShell 是微软签名程序，不会被拦）\r\n" +
-            "  2. 设置 → 隐私和安全性 → Windows 安全中心 → 病毒和威胁防护 →\r\n" +
-            "     管理勒索软件防护 → 受控文件夹访问 → 允许应用 → 添加本程序\r\n\r\n" +
-            "详细信息：" + err);
+        catch { return false; }
     }
 
     [STAThread]
     static void Main(string[] args)
     {
-        try
+        bool elevated = args != null && Array.IndexOf(args, "/elevated") >= 0;
+        bool noElevate = args != null && Array.IndexOf(args, "/no-elevate") >= 0;
+
+        if (!elevated && !noElevate && !IsAdmin())
         {
-            string targetDir = null;
-            if (args != null && args.Length > 0 && !string.IsNullOrWhiteSpace(args[0]))
-                targetDir = args[0].Trim('"');
+            // 需要管理员权限才能写 Program Files：重新以管理员身份启动自己
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo(Assembly.GetExecutingAssembly().Location, "/elevated");
+                psi.UseShellExecute = true;
+                psi.Verb = "runas";
+                Process.Start(psi);
+            }
+            catch
+            {
+                MessageBox.Show("安装需要管理员权限。\r\n\r\n" +
+                    "如果不想提权，也可以双击同目录下的「安装.cmd」安装。",
+                    AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            return;
+        }
 
-            string work = PickWorkDir();
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        string prefill = null;
+        if (args != null)
+            foreach (string a in args)
+                if (a.StartsWith("/dir=", StringComparison.OrdinalIgnoreCase)) prefill = a.Substring(5).Trim('"');
+
+        bool demoFinish = args != null && Array.IndexOf(args, "/demo-finish") >= 0;
+        InstallerForm f = new InstallerForm(prefill);
+        if (demoFinish) f.Shown += delegate { f.DemoFinish(DefaultDir); };
+        Application.Run(f);
+    }
+
+    // ================= 安装窗口 =================
+    sealed class InstallerForm : Form
+    {
+        readonly string initDir;
+        TextBox txtDir;
+        Button btnBrowse, btnInstall, btnCancel;
+        ProgressBar bar;
+        Label lblStatus;
+        Panel finishPanel;
+        CheckBox chkDesktop, chkRun, chkAuto;
+        bool installing;
+
+        public InstallerForm(string prefillDir)
+        {
+            initDir = string.IsNullOrEmpty(prefillDir) ? DefaultDir : prefillDir;
+            Text = AppTitle;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(560, 260);
+            Font = new Font("微软雅黑", 9f);
+            try { Icon = Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location); } catch { }
+
+            Label lblTitle = new Label();
+            lblTitle.Text = "游戏崩溃诊断器";
+            lblTitle.Font = new Font("微软雅黑", 16f, FontStyle.Bold);
+            lblTitle.AutoSize = true;
+            lblTitle.Location = new Point(24, 20);
+            Controls.Add(lblTitle);
+
+            Label lblSub = new Label();
+            lblSub.Text = "监控游戏时的显卡 / CPU 温度、功耗、频率，崩溃后自动生成诊断报告。";
+            lblSub.ForeColor = Color.FromArgb(90, 90, 96);
+            lblSub.AutoSize = true;
+            lblSub.Location = new Point(26, 58);
+            Controls.Add(lblSub);
+
+            Label lblWhere = new Label();
+            lblWhere.Text = "安装位置";
+            lblWhere.AutoSize = true;
+            lblWhere.Location = new Point(26, 96);
+            Controls.Add(lblWhere);
+
+            txtDir = new TextBox();
+            txtDir.Text = initDir;
+            txtDir.Location = new Point(26, 118);
+            txtDir.Size = new Size(410, 26);
+            Controls.Add(txtDir);
+
+            btnBrowse = new Button();
+            btnBrowse.Text = "浏览...";
+            btnBrowse.Location = new Point(446, 117);
+            btnBrowse.Size = new Size(88, 28);
+            btnBrowse.Click += delegate
+            {
+                using (FolderBrowserDialog fbd = new FolderBrowserDialog())
+                {
+                    fbd.Description = "选择安装位置";
+                    fbd.SelectedPath = txtDir.Text;
+                    if (fbd.ShowDialog(this) == DialogResult.OK) txtDir.Text = fbd.SelectedPath;
+                }
+            };
+            Controls.Add(btnBrowse);
+
+            bar = new ProgressBar();
+            bar.Location = new Point(26, 162);
+            bar.Size = new Size(508, 18);
+            bar.Minimum = 0;
+            bar.Maximum = 100;
+            Controls.Add(bar);
+
+            lblStatus = new Label();
+            lblStatus.Text = "准备就绪，点「开始安装」";
+            lblStatus.AutoSize = true;
+            lblStatus.Location = new Point(26, 186);
+            Controls.Add(lblStatus);
+
+            btnInstall = new Button();
+            btnInstall.Text = "开始安装";
+            btnInstall.Location = new Point(334, 212);
+            btnInstall.Size = new Size(100, 32);
+            btnInstall.Click += delegate { StartInstall(); };
+            Controls.Add(btnInstall);
+
+            btnCancel = new Button();
+            btnCancel.Text = "取消";
+            btnCancel.Location = new Point(442, 212);
+            btnCancel.Size = new Size(92, 32);
+            btnCancel.Click += delegate { Close(); };
+            Controls.Add(btnCancel);
+
+            AcceptButton = btnInstall;
+            CancelButton = btnCancel;
+
+            // 完成面板（初始隐藏）
+            finishPanel = new Panel();
+            finishPanel.Location = new Point(0, 90);
+            finishPanel.Size = new Size(560, 170);
+            finishPanel.Visible = false;
+            Controls.Add(finishPanel);
+
+            Label lblDone = new Label();
+            lblDone.Text = "安装完成";
+            lblDone.Font = new Font("微软雅黑", 13f, FontStyle.Bold);
+            lblDone.ForeColor = Color.FromArgb(0, 120, 90);
+            lblDone.AutoSize = true;
+            lblDone.Location = new Point(26, 8);
+            finishPanel.Controls.Add(lblDone);
+
+            chkDesktop = new CheckBox();
+            chkDesktop.Text = "创建桌面快捷方式";
+            chkDesktop.Checked = true;
+            chkDesktop.AutoSize = true;
+            chkDesktop.Location = new Point(30, 52);
+            finishPanel.Controls.Add(chkDesktop);
+
+            chkRun = new CheckBox();
+            chkRun.Text = "安装完成后运行";
+            chkRun.Checked = true;
+            chkRun.AutoSize = true;
+            chkRun.Location = new Point(30, 78);
+            finishPanel.Controls.Add(chkRun);
+
+            chkAuto = new CheckBox();
+            chkAuto.Text = "开机自动启动（后台记录，不弹窗）";
+            chkAuto.Checked = true;
+            chkAuto.AutoSize = true;
+            chkAuto.Location = new Point(30, 104);
+            finishPanel.Controls.Add(chkAuto);
+
+            Button btnFinish = new Button();
+            btnFinish.Text = "完成";
+            btnFinish.Location = new Point(442, 122);
+            btnFinish.Size = new Size(92, 32);
+            btnFinish.Click += delegate { Finish(); };
+            finishPanel.Controls.Add(btnFinish);
+            btnFinish.BringToFront();
+            finishPanel.Controls.SetChildIndex(btnFinish, 0);
+        }
+
+        void Ui(Action a)
+        {
+            if (InvokeRequired) BeginInvoke(a); else a();
+        }
+
+        void StartInstall()
+        {
+            if (installing) return;
+            string dir = txtDir.Text.Trim().Trim('"');
+            if (dir.Length == 0) { MessageBox.Show(this, "请填写安装位置。", AppTitle); return; }
+
+            installing = true;
+            btnInstall.Enabled = false;
+            btnBrowse.Enabled = false;
+            btnCancel.Enabled = false;
+            txtDir.Enabled = false;
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    DoInstall(dir);
+                    Ui(delegate { ShowFinish(dir); });
+                }
+                catch (Exception ex)
+                {
+                    Log("ERROR " + ex);
+                    Ui(delegate
+                    {
+                        MessageBox.Show(this, "安装失败：\r\n" + ex.Message + (LogPath != null ? "\r\n\r\n日志：" + LogPath : ""),
+                            AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        installing = false;
+                        btnInstall.Enabled = true;
+                        btnBrowse.Enabled = true;
+                        btnCancel.Enabled = true;
+                        txtDir.Enabled = true;
+                        lblStatus.Text = "安装失败";
+                    });
+                }
+            });
+        }
+
+        void DoInstall(string targetDir)
+        {
+            string work = Path.Combine(Path.GetTempPath(), "GameCrashDiag-setup-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+            Directory.CreateDirectory(work);
             LogPath = Path.Combine(work, "setup.log");
-            Log("work=" + work);
+            Log("work=" + work + " target=" + targetDir);
 
-            // 1) 解压内嵌文件
             Assembly asm = Assembly.GetExecutingAssembly();
             using (Stream s = asm.GetManifestResourceStream("app.zip"))
             {
                 if (s == null) throw new Exception("安装包损坏（缺少内嵌资源）");
                 using (ZipArchive zip = new ZipArchive(s, ZipArchiveMode.Read))
                 {
+                    int total = zip.Entries.Count, done = 0;
                     foreach (ZipArchiveEntry entry in zip.Entries)
                     {
                         string dest = Path.Combine(work, entry.FullName.Replace('/', '\\'));
-                        if (entry.FullName.EndsWith("/")) { Directory.CreateDirectory(dest); continue; }
-                        Directory.CreateDirectory(Path.GetDirectoryName(dest));
-                        entry.ExtractToFile(dest, true);
+                        if (entry.FullName.EndsWith("/")) Directory.CreateDirectory(dest);
+                        else
+                        {
+                            Directory.CreateDirectory(Path.GetDirectoryName(dest));
+                            entry.ExtractToFile(dest, true);
+                        }
+                        done++;
+                        int pct = (int)(done * 40.0 / Math.Max(1, total));
+                        Ui(delegate { bar.Value = pct; lblStatus.Text = "解压文件 " + done + " / " + total; });
                     }
                 }
             }
             Log("extracted");
 
+            Ui(delegate { bar.Value = 45; lblStatus.Text = "正在复制程序文件..."; });
+
             string ps = Path.Combine(work, "install.ps1");
             if (!File.Exists(ps)) throw new Exception("安装脚本缺失");
+            string psArgs = "-NoProfile -ExecutionPolicy Bypass -File \"" + ps + "\" -Silent -InstallDir \"" + targetDir + "\"";
 
-            // 2) 写一个中转批处理：用 explorer.exe 启动，拿到「中等完整性」令牌。
-            //    直接 Process.Start 会继承本程序的低完整性级别，写 D:\Program Files 会被拒绝。
-            string outFile = Path.Combine(work, "_out.txt");
-            string exitFile = Path.Combine(work, "_exit.txt");
+            ProcessStartInfo psi = new ProcessStartInfo("powershell.exe", psArgs);
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            psi.WorkingDirectory = work;
 
-            // 用 UAC 提权启动安装：本程序可能处于低完整性级别，
-            // 无法写入 D:\Program Files；提权后由管理员令牌执行才可靠。
-            string inner = "powershell -NoProfile -ExecutionPolicy Bypass -File \"" + ps + "\" -Silent";
-            if (!string.IsNullOrEmpty(targetDir)) inner += " -InstallDir \"" + targetDir + "\"";
-            string cmdLine = "/c \"" + inner + " > \"" + outFile + "\" 2>&1 & echo %ERRORLEVEL%> \"" + exitFile + "\"";
+            string outText, errText;
+            int code;
+            using (Process proc = Process.Start(psi))
+            {
+                outText = proc.StandardOutput.ReadToEnd();
+                errText = proc.StandardError.ReadToEnd();
+                proc.WaitForExit();
+                code = proc.ExitCode;
+            }
+            Log("install exit=" + code + " err=" + errText);
 
-            Log("launching elevated: " + cmdLine);
-            ProcessStartInfo rsi = new ProcessStartInfo("cmd.exe", cmdLine);
-            rsi.UseShellExecute = true;
-            rsi.Verb = "runas";
-            rsi.WindowStyle = ProcessWindowStyle.Hidden;
+            if (code != 0)
+                throw new Exception("install.ps1 返回 " + code + "\r\n" + Tail(errText, 600) + "\r\n" + Tail(outText, 600));
+
+            Ui(delegate { bar.Value = 90; lblStatus.Text = "正在收尾..."; });
+
+            try { Directory.Delete(work, true); } catch { }
+            Log("done " + targetDir);
+        }
+
+        void ShowFinish(string dir)
+        {
+            bar.Value = 100;
+            lblStatus.Text = "安装完成";
+            lblStatus.ForeColor = Color.FromArgb(0, 120, 90);
+            txtDir.Visible = false;
+            btnBrowse.Visible = false;
+            Controls.Remove(bar);
+            foreach (Control c in Controls)
+                if (c is Label && ((Label)c).Text.StartsWith("安装位置")) c.Visible = false;
+
+            btnInstall.Visible = false;
+            btnCancel.Visible = false;
+            finishPanel.Visible = true;
+            finishPanel.BringToFront();
+            Tag = dir;
+        }
+
+        public void DemoFinish(string dir)
+        {
+            ShowFinish(dir);
+        }
+
+        void Finish()
+        {
+            string dir = Tag as string ?? txtDir.Text.Trim();
             try
             {
-                using (Process rp = Process.Start(rsi)) { rp.WaitForExit(); }
-            }
-            catch (Exception rex)
-            {
-                Log("elevation failed: " + rex.Message);
-                MessageBox.Show(
-                    "需要管理员权限才能安装到 " + (string.IsNullOrEmpty(targetDir) ? @"D:\Program Files\GameCrashDiag" : targetDir) + "。\r\n\r\n" +
-                    "已取消提权，或提权被系统拒绝。\r\n" +
-                    "可以改用同目录下的「安装.cmd」安装。\r\n\r\n" + rex.Message,
-                    "游戏崩溃诊断器", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+                string desktopLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "游戏崩溃诊断器.lnk");
+                if (!chkDesktop.Checked) { try { File.Delete(desktopLnk); } catch { } }
 
-            // 3) 等待安装完成（最多 3 分钟）
-            int waited = 0;
-            while (waited < 180000 && !File.Exists(exitFile))
-            {
-                Thread.Sleep(500);
-                waited += 500;
+                if (chkAuto.Checked)
+                {
+                    string vbs = Path.Combine(dir, "自启-托盘.vbs");
+                    using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
+                        if (k != null) k.SetValue("GameCrashDiag", "\"" + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "wscript.exe") + "\" \"" + vbs + "\"", RegistryValueKind.String);
+                    using (RegistryKey k = Registry.CurrentUser.OpenSubKey(ApprovePath, true))
+                        if (k != null) k.SetValue("GameCrashDiag", new byte[] { 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, RegistryValueKind.Binary);
+                }
+                else
+                {
+                    using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
+                        if (k != null) k.DeleteValue("GameCrashDiag", false);
+                }
+
+                if (chkRun.Checked)
+                {
+                    string launch = Path.Combine(dir, "启动诊断器.vbs");
+                    if (File.Exists(launch))
+                    {
+                        ProcessStartInfo psi = new ProcessStartInfo("wscript.exe", "\"" + launch + "\"");
+                        psi.UseShellExecute = true;
+                        Process.Start(psi);
+                    }
+                }
             }
-
-            string outText = File.Exists(outFile) ? File.ReadAllText(outFile, Encoding.GetEncoding(936)) : "";
-            int exitCode = -1;
-            if (File.Exists(exitFile))
-            {
-                int.TryParse(File.ReadAllText(exitFile).Trim(), out exitCode);
-            }
-            Log("install exit=" + exitCode + " waited=" + waited);
-
-            string finalDir = string.IsNullOrEmpty(targetDir) ? @"D:\Program Files\GameCrashDiag" : targetDir;
-
-            if (exitCode != 0)
-            {
-                MessageBox.Show(
-                    "安装失败（退出码 " + exitCode + "）。\r\n\r\n" + Tail(outText, 1200) + "\r\n\r\n" +
-                    "可以改用同目录下的「安装.cmd」安装。\r\n日志：" + LogPath,
-                    "游戏崩溃诊断器", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
-            Log("done, dir=" + finalDir);
-            try { Directory.Delete(work, true); } catch { }
-            MessageBox.Show(
-                "安装完成。\r\n\r\n" +
-                "安装位置：" + finalDir + "\r\n" +
-                "桌面上已创建「游戏崩溃诊断器」快捷方式，双击即可使用。\r\n\r\n" +
-                "以后想卸载：设置 → 应用 → 游戏崩溃诊断器。",
-                "游戏崩溃诊断器", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            catch (Exception ex) { Log("finish error " + ex.Message); }
+            Close();
         }
-        catch (Exception ex)
+
+        static string Tail(string s, int max)
         {
-            Log("ERROR " + ex);
-            MessageBox.Show("安装启动失败：\r\n" + ex.Message,
-                "游戏崩溃诊断器", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (string.IsNullOrEmpty(s)) return "";
+            s = s.Trim();
+            return s.Length <= max ? s : "..." + s.Substring(s.Length - max);
         }
-    }
-
-    static string Tail(string s, int max)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        s = s.Trim();
-        return s.Length <= max ? s : "..." + s.Substring(s.Length - max);
     }
 }
