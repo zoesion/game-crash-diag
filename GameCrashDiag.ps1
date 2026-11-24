@@ -642,7 +642,7 @@ $btnDxFix.Add_Click({ Show-DxAction })
 $form.Controls.Add($btnDxFix)
 $btnDxFix.BringToFront()
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v4.3   数据目录: $Root"
+$lblVer.Text = "v4.4   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 656)
@@ -893,6 +893,10 @@ function Write-CrashReport($exitTime, $isCrash = $true, $reason = '') {
     catch { L "  (诊断生成失败: $($_.Exception.Message))" }
     L ''
 
+    L '--- 错误代码解读 ---'
+    try { foreach ($cl in (Get-CodeExplanationLines)) { L $cl } } catch { L '  (读取失败)' }
+    L ''
+
     L '--- 系统状态 ---'
     L (& nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>&1)
     $gd = 'HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers'
@@ -905,6 +909,7 @@ function Write-CrashReport($exitTime, $isCrash = $true, $reason = '') {
 }
 
 $script:ColGray   = [System.Drawing.Color]::FromArgb(150, 150, 160)
+$script:ColRed    = [System.Drawing.Color]::FromArgb(235, 86, 79)      # 功耗曲线
 $script:ColOrange = [System.Drawing.Color]::FromArgb(255, 170, 70)
 
 function Ensure-ChartBitmaps {
@@ -1032,7 +1037,7 @@ function Draw-Chart {
     if ($aGpu.Count -ge 1) {
         if ($script:HasNvidia) {
             [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
-                $C.Card, $C.Grid, $C.Accent, $script:ColGray, $C.Dim, $infoTxt,
+                $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 '温度 (°C)', '功耗 (W)', '°C', 'W', $script:GpuHover)
         }
         else {
