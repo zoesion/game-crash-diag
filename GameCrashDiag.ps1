@@ -24,6 +24,8 @@ param(
     [switch]$TestReport,
     [switch]$TestDiagnosis,
     [switch]$TestView,
+    [switch]$ShowAbout,
+    [switch]$ShowDiagnosis,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -656,7 +658,7 @@ $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v5.3   数据目录: $Root"
+$lblVer.Text = "v5.4   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 572)
@@ -672,7 +674,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:AppVersion = 'v5.3'
+$script:AppVersion = 'v5.4'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -2155,18 +2157,13 @@ function Get-HealthReportText {
 
 function Show-AboutDialog {
     $about = @(
-        '游戏崩溃诊断器  GameCrashDiag',
-        "版本 $($script:AppVersion)",
+        ('游戏崩溃诊断器  GameCrashDiag  ' + $script:AppVersion),
         '',
         '【它是什么】',
-        '一个轻量的本地监控与崩溃取证工具。游戏运行时自动记录显卡和 CPU 的',
-        '温度、功耗、频率、占用；游戏闪退后自动生成一份能直接看懂的诊断报告。',
+        '一个轻量的本地监控与崩溃取证工具。游戏运行时自动记录显卡和 CPU 的温度、功耗、频率、占用；游戏闪退后自动生成一份能直接看懂的诊断报告。',
         '',
         '【为什么会有它】',
-        '最早是为了排查《战地 6》的 DXGI_ERROR_DEVICE_HUNG 闪退写的。',
-        '在翻了几百个崩溃转储、显卡驱动事件和遥测数据之后，发现绝大多数问题',
-        '都集中在三个地方：超频不稳、散热余量不足、驱动与系统不匹配。',
-        '于是把这套排查流程做成了自动化工具，省掉人工比对数据的功夫。',
+        '最早是为了排查《战地 6》的 DXGI_ERROR_DEVICE_HUNG 闪退写的。在翻了几百个崩溃转储、显卡驱动事件和遥测数据之后，发现绝大多数问题都集中在三个地方：超频不稳、散热余量不足、驱动与系统不匹配。于是把这套排查流程做成了自动化工具，省掉人工比对数据的功夫。',
         '',
         '【能做什么】',
         '· 实时监控 GPU / CPU 共 12 项指标，双曲线走势，鼠标悬停看具体数值和时间',
@@ -2177,12 +2174,10 @@ function Show-AboutDialog {
         '· 全部数据保存在本地，不联网、不上传、不注入游戏进程',
         '',
         '【适合谁】',
-        '遇到游戏闪退、卡死、花屏，又看不懂 dump 文件的玩家。',
-        '报告是纯文本，可以直接贴到论坛，或者发给懂行的朋友。',
+        '遇到游戏闪退、卡死、花屏，又看不懂 dump 文件的玩家。报告是纯文本，可以直接贴到论坛，或者发给懂行的朋友。',
         '',
         '【关于结论】',
-        '诊断结论是基于遥测数据的规则判断，不是专业检修，仅供参考。',
-        '如果反复出现同类问题，建议结合报告去找维修或官方支持。',
+        '诊断结论是基于遥测数据的规则判断，不是专业检修，仅供参考。如果反复出现同类问题，建议结合报告去找维修或官方支持。',
         '',
         '【开源地址】',
         'GitHub：（待补充）',
@@ -2192,7 +2187,7 @@ function Show-AboutDialog {
 
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text = '关于 游戏崩溃诊断器'
-    $dlg.Size = New-Object System.Drawing.Size(620, 560)
+    $dlg.Size = New-Object System.Drawing.Size(660, 580)
     $dlg.StartPosition = 'CenterParent'
     $dlg.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
     $dlg.ForeColor = $C.Text
@@ -2222,7 +2217,7 @@ function Show-AboutDialog {
     $btnOk = New-Object System.Windows.Forms.Button
     $btnOk.Text = '关闭'
     $btnOk.Size = New-Object System.Drawing.Size(132, 32)
-    $btnOk.Location = New-Object System.Drawing.Point(452, 8)
+    $btnOk.Location = New-Object System.Drawing.Point(492, 8)
     $btnOk.FlatStyle = 'Flat'
     $btnOk.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
     $btnOk.ForeColor = $C.Text
@@ -2232,7 +2227,7 @@ function Show-AboutDialog {
     $btnCopy = New-Object System.Windows.Forms.Button
     $btnCopy.Text = '复制诊断摘要'
     $btnCopy.Size = New-Object System.Drawing.Size(132, 32)
-    $btnCopy.Location = New-Object System.Drawing.Point(308, 8)
+    $btnCopy.Location = New-Object System.Drawing.Point(348, 8)
     $btnCopy.FlatStyle = 'Flat'
     $btnCopy.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
     $btnCopy.ForeColor = $C.Text
@@ -2507,6 +2502,14 @@ if ($TestView) {
     Set-ViewSpan 30
     $r = Get-ViewRange
     Write-Output ("切到30分钟: count={0} (期望 3600 被裁到 3000)" -f $r.Count)
+    exit 0
+}
+if ($ShowAbout -or $ShowDiagnosis) {
+    $form.Show()
+    [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 800
+    try { Update-DxIndicator } catch {}
+    if ($ShowAbout) { Show-AboutDialog } else { Show-DiagnosisWindow }
     exit 0
 }
 if ($Minimized) {
