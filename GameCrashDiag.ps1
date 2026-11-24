@@ -658,7 +658,7 @@ $form.Controls.Add($lblHint)
 
 # ── DirectX 状态行 + 修复按钮 ──
 $lblVer = New-Object System.Windows.Forms.Label
-$lblVer.Text = "v5.5   数据目录: $Root"
+$lblVer.Text = "v5.6   数据目录: $Root"
 $lblVer.Font = $FontVer
 $lblVer.ForeColor = [System.Drawing.Color]::FromArgb(90, 90, 100)
 $lblVer.Location = New-Object System.Drawing.Point(6, 572)
@@ -674,7 +674,7 @@ $script:ReportCount= 0
 $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
-$script:AppVersion = 'v5.5'
+$script:AppVersion = 'v5.6'
 $script:MaxPoints  = [math]::Max(1000, [int](86400000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 24 小时）
 $script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
 $script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
@@ -2230,6 +2230,7 @@ function Show-AboutDialog {
     $tb.Text = ($about -join "`r`n")
     $tb.SelectionStart = 0
     $tb.SelectionLength = 0
+    $tb.ScrollToCaret()
 
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Dock = 'Bottom'
@@ -2294,6 +2295,7 @@ function Show-DiagnosisWindow {
     $lines = Get-HealthReportText
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text = '诊断报告 - 游戏崩溃诊断器'
+    try { $dlg.Icon = $form.Icon } catch {}
     $dlg.Size = New-Object System.Drawing.Size(700, 620)
     $dlg.StartPosition = 'CenterParent'
     $dlg.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 28)
@@ -2313,6 +2315,7 @@ function Show-DiagnosisWindow {
     $tb.Text = ($lines -join "`r`n")
     $tb.SelectionStart = 0
     $tb.SelectionLength = 0
+    $tb.ScrollToCaret()
 
     $panel = New-Object System.Windows.Forms.Panel
     $panel.Dock = 'Bottom'
@@ -2321,8 +2324,8 @@ function Show-DiagnosisWindow {
 
     $btnFix = New-Object System.Windows.Forms.Button
     $btnFix.Text = '修复 DirectX'
-    $btnFix.Size = New-Object System.Drawing.Size(110, 30)
-    $btnFix.Location = New-Object System.Drawing.Point(12, 9)
+    $btnFix.Size = New-Object System.Drawing.Size(150, 32)
+    $btnFix.Location = New-Object System.Drawing.Point(12, 8)
     $btnFix.FlatStyle = 'Flat'
     $btnFix.BackColor = [System.Drawing.Color]::FromArgb(30, 58, 42)
     $btnFix.ForeColor = [System.Drawing.Color]::FromArgb(150, 230, 180)
@@ -2331,8 +2334,8 @@ function Show-DiagnosisWindow {
 
     $btnCopy = New-Object System.Windows.Forms.Button
     $btnCopy.Text = '复制报告'
-    $btnCopy.Size = New-Object System.Drawing.Size(100, 30)
-    $btnCopy.Location = New-Object System.Drawing.Point(470, 9)
+    $btnCopy.Size = New-Object System.Drawing.Size(120, 32)
+    $btnCopy.Location = New-Object System.Drawing.Point(452, 8)
     $btnCopy.FlatStyle = 'Flat'
     $btnCopy.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
     $btnCopy.ForeColor = [System.Drawing.Color]::FromArgb(228, 228, 231)
@@ -2341,8 +2344,8 @@ function Show-DiagnosisWindow {
 
     $btnClose = New-Object System.Windows.Forms.Button
     $btnClose.Text = '关闭'
-    $btnClose.Size = New-Object System.Drawing.Size(90, 30)
-    $btnClose.Location = New-Object System.Drawing.Point(580, 9)
+    $btnClose.Size = New-Object System.Drawing.Size(120, 32)
+    $btnClose.Location = New-Object System.Drawing.Point(580, 8)
     $btnClose.FlatStyle = 'Flat'
     $btnClose.BackColor = [System.Drawing.Color]::FromArgb(34, 34, 40)
     $btnClose.ForeColor = [System.Drawing.Color]::FromArgb(228, 228, 231)

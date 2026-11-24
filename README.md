@@ -4,6 +4,8 @@
 
 ![关于](docs/about.png)
 
+![诊断报告](docs/diagnosis.png)
+
 > 任意游戏运行时 GPU / CPU 实时监控与崩溃取证工具 —— 专治 `DXGI_ERROR_DEVICE_HUNG` 这类 DX 报错。
 
 **英文名 / 仓库名：GameCrashDiag / game-crash-diag**
