@@ -54,6 +54,9 @@
     MenuMem     = '程序内存 {0:N0} MB'
     MenuLang    = '语言 / Language'
     MenuAbout   = '关于'
+    TrayShow    = '显示主界面'
+    TrayExit    = '退出'
+    TrayBalloon = '已最小化到托盘，仍在后台记录。双击图标可重新打开。'
 
     DxChecking  = 'DirectX 运行库：检测中…'
     DxOk        = 'DirectX 运行库：完整正常'

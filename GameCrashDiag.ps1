@@ -67,7 +67,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.64'
+$script:AppVersion = 'v5.66'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1607,21 +1607,22 @@ function Invoke-DxRepair {
     $dx = Get-DxStatus
     if ($dx.Missing.Count -eq 0 -and -not $Force) {
         [System.Windows.Forms.MessageBox]::Show(
-            "DirectX 组件齐全，不需要修复。`n`n如果要强制校验系统文件，可以运行：`n  DISM /Online /Cleanup-Image /RestoreHealth",
-            'DirectX 检查', 'OK', 'Information') | Out-Null
+            $(if ($script:T.LanguageCode -eq 'en-US') { "DirectX components are complete - no repair needed.`n`nTo force a system file check, run:`n  DISM /Online /Cleanup-Image /RestoreHealth" } else { "DirectX 组件齐全，不需要修复。`n`n如果要强制校验系统文件，可以运行：`n  DISM /Online /Cleanup-Image /RestoreHealth" }),
+              $(if ($script:T.LanguageCode -eq 'en-US') { 'DirectX check' } else { 'DirectX 检查' }), 'OK', 'Information') | Out-Null
         return
     }
 
     $list = ($dx.Missing | ForEach-Object { "  · $($_.Name)（$($_.File)）" }) -join "`n"
-    $msg = "检测到 DirectX 缺少以下组件：`n`n$list`n`n是否自动修复？`n`n"
+      $msg = $(if ($script:T.LanguageCode -eq 'en-US') { "Missing DirectX components detected:`n`n$list`n`nRepair automatically?`n`n" } else { "检测到 DirectX 缺少以下组件：`n`n$list`n`n是否自动修复？`n`n" })
     if ($dx.MissingLegacy.Count -gt 0) {
-        $msg += "将下载微软官方 DirectX 运行库（约 300KB）并安装，需要管理员权限。`n"
+          $msg += $(if ($script:T.LanguageCode -eq 'en-US') { "Will download the official Microsoft DirectX runtime (~300KB) and install it. Admin rights required.`n" } else { "将下载微软官方 DirectX 运行库（约 300KB）并安装，需要管理员权限。`n" })
     }
     if ($dx.MissingCore.Count -gt 0) {
-        $msg += "缺少系统核心组件，将尝试用 DISM 修复（耗时较长，需要管理员权限）。`n"
+          $msg += $(if ($script:T.LanguageCode -eq 'en-US') { "Core system components are missing - will try a DISM repair (slow, needs admin).`n" } else { "缺少系统核心组件，将尝试用 DISM 修复（耗时较长，需要管理员权限）。`n" })
     }
 
-    $ans = [System.Windows.Forms.MessageBox]::Show($msg, '自动修复 DirectX', 'YesNo', 'Question')
+      $title = if ($script:T.LanguageCode -eq 'en-US') { 'Repair DirectX' } else { '自动修复 DirectX' }
+      $ans = [System.Windows.Forms.MessageBox]::Show($msg, $title, 'YesNo', 'Question')
     if ($ans -ne 'Yes') { return }
 
     $log = New-Object System.Collections.Generic.List[string]
@@ -2475,14 +2476,14 @@ try {
     if (Test-Path $icoPath) { $trayIcon.Icon = New-Object System.Drawing.Icon($icoPath) }
     else { $trayIcon.Icon = [System.Drawing.SystemIcons]::Application }
 } catch { $trayIcon.Icon = [System.Drawing.SystemIcons]::Application }
-$trayIcon.Text = '游戏崩溃诊断器'
+$trayIcon.Text = $script:T.AppTitle
 $trayIcon.Visible = $true
 
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
-$miShow = $trayMenu.Items.Add('显示主界面')
+$miShow = $trayMenu.Items.Add($script:T.TrayShow)
 $miFolder = $trayMenu.Items.Add($script:T.MenuLogs)
 [void]$trayMenu.Items.Add('-')
-$miExit = $trayMenu.Items.Add('退出')
+$miExit = $trayMenu.Items.Add($script:T.TrayExit)
 $trayIcon.ContextMenuStrip = $trayMenu
 
 function Show-MainWindow {
@@ -2539,7 +2540,7 @@ $form.Add_FormClosing({
         $form.Hide()
         $form.ShowInTaskbar = $false
         try {
-            $trayIcon.ShowBalloonTip(1500, '游戏崩溃诊断器', '已最小化到托盘，仍在后台记录。双击图标可重新打开。', [System.Windows.Forms.ToolTipIcon]::Info)
+            $trayIcon.ShowBalloonTip(1500, $script:T.AppTitle, $script:T.TrayBalloon, [System.Windows.Forms.ToolTipIcon]::Info)
         } catch {}
     }
 })

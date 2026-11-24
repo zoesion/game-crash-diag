@@ -54,6 +54,9 @@
     MenuMem     = 'Memory usage {0:N0} MB'
     MenuLang    = 'Language / 语言'
     MenuAbout   = 'About'
+    TrayShow    = 'Show main window'
+    TrayExit    = 'Exit'
+    TrayBalloon = 'Minimized to the tray - still recording in the background. Double-click the icon to reopen.'
 
     DxChecking  = 'DirectX runtime: checking...'
     DxOk        = 'DirectX runtime: all components OK'
