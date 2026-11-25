@@ -69,7 +69,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.88'
+$script:AppVersion = 'v5.87'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
