@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.77'
+$script:AppVersion = 'v5.78'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1279,19 +1279,21 @@ function Draw-Chart {
         $mxA = ($aGpu | Measure-Object -Maximum).Maximum
         $mnB = ($bGpu | Measure-Object -Minimum).Minimum
         $mxB = ($bGpu | Measure-Object -Maximum).Maximum
+        $hvg = -1
+        if ($script:GpuHover -ge 0) { $hl = $script:GpuHover - $r.From; if ($hl -ge 0 -and $hl -lt $cnt) { $hvg = $hl } }
         if ($script:HasNvidia) {
             $labA = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendGpuTemp, $script:T.StatMax, $mxA, $script:T.StatMin, $mnA)
             $labB = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendPower, $script:T.StatMax, $mxB, $script:T.StatMin, $mnB)
             [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
-                $labA, $labB, '°C', 'W', $script:GpuHover)
+                $labA, $labB, '°C', 'W', $hvg)
         }
         else {
             $labA = 'GPU 占用 %   最高 {0:N0}  最低 {1:N0}' -f $mxA, $mnA
             $labB = '显存 MB   最高 {0:N0}  最低 {1:N0}' -f $mxB, $mnB
             [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
-                $labA, $labB, '%', 'MB', $script:GpuHover)
+                $labA, $labB, '%', 'MB', $hvg)
         }
         Draw-SessionMarker $script:chartBmp $r.From $cnt
         $chart.Refresh()
@@ -1315,9 +1317,11 @@ function Draw-Chart {
             $mxF = ($bCpu | Measure-Object -Maximum).Maximum
             $labC = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendCpuTemp, $script:T.StatMax, $mxC, $script:T.StatMin, $mnC)
             $labF = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendFreq, $script:T.StatMax, $mxF, $script:T.StatMin, $mnF)
+            $hvc = -1
+            if ($script:CpuHover -ge 0) { $hl2 = $script:CpuHover - $r.From; if ($hl2 -ge 0 -and $hl2 -lt $cCnt) { $hvc = $hl2 } }
             [ChartRenderer]::Render($script:cpuBmp, $aCpu, $bCpu, $cCnt,
                 $C.Card, $C.Grid, $C.Accent, $script:ColPurple, $C.Dim, $cInfo,
-                $labC, $labF, '°C', 'MHz', $script:CpuHover)
+                $labC, $labF, '°C', 'MHz', $hvc)
             Draw-SessionMarker $script:cpuBmp $r.From $cCnt
             $cpuChart.Refresh()
 
@@ -1526,9 +1530,15 @@ function Show-HoverTip([string]$which, $ctrl, [int]$x, [int]$y = 10) {
     $n = $listA.Count
     if ($n -lt 2) { return }
 
+    # 鼠标 X 坐标映射到「当前可视窗口」内的采样点（与曲线绘制一致）
+    $vr = Get-ViewRange
+    $vcnt = [int]$vr.Count
+    if ($vcnt -lt 2) { return }
     $ratio = [math]::Max(0.0, [math]::Min(1.0, ($x - 6) / ([double]$ctrl.Width - 12)))
-    $idx = [int][math]::Round($ratio * ($n - 1))
-
+    $localIdx = [int][math]::Round($ratio * ($vcnt - 1))
+    $idx = [int]$vr.From + $localIdx
+    if ($idx -lt 0) { $idx = 0 }
+    if ($idx -ge $n) { $idx = $n - 1 }
     if ($isGpu) {
         if ($script:GpuHover -eq $idx) { return }
         $script:GpuHover = $idx

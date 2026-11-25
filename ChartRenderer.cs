@@ -1,4 +1,4 @@
-// BF6 监控器 —— 曲线绘制核心（编译成 .NET 类型，避免 PowerShell 逐点解释的开销）
+﻿// BF6 监控器 —— 曲线绘制核心（编译成 .NET 类型，避免 PowerShell 逐点解释的开销）
 // 由 BF6Monitor.ps1 通过 Add-Type 加载
 using System;
 using System.Collections.Generic;
@@ -120,9 +120,9 @@ public static class ChartRenderer
             if (hover >= 0 && hover < count)
             {
                 float hx = 6f + (float)((w - 12) * (hover / (double)(count - 1)));
-                using (Pen penH = new Pen(Color.FromArgb(110, 200, 200, 210), 1f))
+                using (Pen penH = new Pen(Color.FromArgb(215, 232, 92, 92), 1f))
                 {
-                    penH.DashStyle = DashStyle.Dot;
+                    // 红色实线，直接贯穿图表，方便对准鼠标
                     g.DrawLine(penH, hx, 0, hx, h);
                 }
                 double yA = h - 14 - ((a[hover] - loA) / (hiA - loA)) * (h - 42);
