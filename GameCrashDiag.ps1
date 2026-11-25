@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.74'
+$script:AppVersion = 'v5.75'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -853,6 +853,7 @@ function Restore-HistoryFromLastLog {
     param([int]$MaxPoints = 1200)
     try {
         $last = Get-ChildItem $LogDir -Recurse -Filter '*.csv' -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -ne $script:LogFile -and $_.Length -gt 2000 } |
                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if (-not $last) { return 0 }
         if (((Get-Date) - $last.LastWriteTime).TotalDays -gt 7) { return 0 }
@@ -1586,13 +1587,12 @@ $form.Add_Shown({
         $miAuto.Checked = Test-AutoStart
         $script:AutoStartInit = $true
     } catch { $script:AutoStartInit = $true }
-    # 重启后把上次记录的最后一段接回曲线
-    try {
-        $restored = Restore-HistoryFromLastLog
-        if ($restored -gt 0) { $script:RestoredCount = $restored }
-    } catch {}
+
     $hasGame = $null -ne (Find-RunningGame)
     if (-not $hasGame -and -not $script:Recording) {
+        Start-Logging 'system'
+        # 接上上次的曲线：Start-Logging 会清空缓冲，必须放在它之后
+        try { $script:RestoredCount = Restore-HistoryFromLastLog } catch { $script:RestoredCount = 0 }
         $lblHint.Text = $script:T.HintNoGame
         if ($script:RestoredCount -gt 0) { $lblHint.Text += "  (已接上上次的 $($script:RestoredCount) 个采样)" }
     }
