@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.82'
+$script:AppVersion = 'v5.83'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1387,12 +1387,7 @@ function Update-UI {
         '^P1[0-5]$' { "$($s.PState) 深度待机" }
         default { "$($s.PState)" }
     }
-    # 总功率：GPU 实测 + CPU 估算（CPU 无通用功率传感器，按负载线性估算，仅作参考）
-    $gpuW = if ($null -ne $s.Power) { [double]$s.Power } else { 0 }
-    $cpuLoadPct = if ($null -ne $cpu.Load) { [double]$cpu.Load } else { 0 }
-    $cpuW = 6 + ($cpuLoadPct / 100.0) * 75
-    $totalW = [math]::Round($gpuW + $cpuW)
-    $lblDetail.Text = ("{0} {1:N0} / {2} MB      {3} {4}      GPU降频 {5}      {6} {7}      总功耗 {8:N0}W" -f $script:T.RowVram, [double]$s.MemUsed, $memTotal, $script:T.RowSysMem, $ramTxt, $s.Throttle, $script:T.RowPower, $pstateTxt, $totalW)
+    $lblDetail.Text = ("{0} {1:N0} / {2} MB      {3} {4}      GPU降频 {5}      {6} {7}" -f $script:T.RowVram, [double]$s.MemUsed, $memTotal, $script:T.RowSysMem, $ramTxt, $s.Throttle, $script:T.RowPower, $pstateTxt)
 
     # 记录
     if ($script:Recording) {
