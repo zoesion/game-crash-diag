@@ -69,7 +69,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.86'
+$script:AppVersion = 'v5.87'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -2670,7 +2670,7 @@ function Show-AboutDialog {
         "",
         "[What it does]",
         "- Live monitoring of 12 GPU/CPU metrics with trend charts; hover to read exact values and time",
-        "- Detects any fullscreen game automatically and records into logs\<game>\; up to 24h of history",
+        "- Detects any fullscreen game automatically and records into logs\<game>\; up to 6h of history",
         "- Generates a crash report with verdict, error code explanations and temperature baseline comparison",
         "- Built-in explanations for 25 common error codes (DXGI, bugchecks, driver events)",
         "- DirectX component check with one-click repair",
@@ -2700,7 +2700,7 @@ function Show-AboutDialog {
         '',
         '【能做什么】',
         '· 实时监控 GPU / CPU 共 12 项指标，双曲线走势，鼠标悬停看具体数值和时间',
-        '· 自动识别正在运行的全屏游戏，按游戏名分目录记录，可回看最近 24 小时',
+        '· 自动识别正在运行的全屏游戏，按游戏名分目录记录，可回看最近 6 小时',
         '· 游戏闪退时自动生成报告：判定结论、错误代码解读、温度基线对比',
         '· 内置 25 条常见错误码释义（DXGI 错误、蓝屏码、显卡驱动事件）',
         '· DirectX 组件完整性检查，缺组件可一键修复',
