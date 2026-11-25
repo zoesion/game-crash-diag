@@ -2,6 +2,13 @@
 
 > 仓库地址： <https://github.com/zoesion/game-crash-diag>
 
+**English** · A Windows desktop tool that watches GPU/CPU temperature, power and clocks while you play,
+and turns a game crash into a report you can actually act on: error-code explanations, an idle-vs-in-game
+thermal baseline, and concrete next steps. Chinese UI and reports by default; English is available in-app.
+
+**中文** · 一个 Windows 桌面小工具：玩游戏时实时记录显卡和 CPU 的温度、功耗、频率，游戏崩溃后自动生成
+一份能看懂的诊断报告 —— 错误码解读、空闲与游戏内温度基线对比、以及具体的处理建议。界面和报告支持中英双语。
+
 ![主界面](docs/main.png)
 
 ![关于](docs/about.png)
