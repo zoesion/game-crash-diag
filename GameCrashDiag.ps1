@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.78'
+$script:AppVersion = 'v5.79'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1236,14 +1236,14 @@ function Draw-SessionMarker($bmp, $from, $cnt) {
         $pen.Dispose()
 
         # 在分界线旁标注间隔时长
-        if ($script:SessionGapMin -gt 0) {
+        if ($script:SessionGapMin -ge 1) {
             $gapTxt = if ($script:SessionGapMin -ge 60) { '隔 {0:0.#} 小时' -f ($script:SessionGapMin / 60.0) } else { '隔 {0} 分钟' -f $script:SessionGapMin }
             $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(160, 170, 170, 190))
             $font = New-Object System.Drawing.Font('微软雅黑', 7)
             $sz = $g.MeasureString($gapTxt, $font)
             $tx = $x - $sz.Width - 4
             if ($tx -lt 2) { $tx = $x + 4 }
-            $g.DrawString($gapTxt, $font, $brush, $tx, 4)
+            $g.DrawString($gapTxt, $font, $brush, $tx, ($bmp.Height - 18))
             $font.Dispose()
             $brush.Dispose()
         }
