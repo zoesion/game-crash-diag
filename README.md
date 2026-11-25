@@ -1,5 +1,7 @@
 ﻿# 游戏崩溃诊断器 · GameCrashDiag
 
+> 仓库地址： <https://github.com/zoesion/game-crash-diag>
+
 ![主界面](docs/main.png)
 
 ![关于](docs/about.png)

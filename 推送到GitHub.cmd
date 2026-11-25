@@ -21,7 +21,8 @@ if not errorlevel 1 goto do_push
 
 echo  第一次使用，需要配置你的 GitHub 仓库
 echo.
-set /p GHUSER=  请输入你的 GitHub 用户名:
+set GHUSER=zoesion
+set /p GHUSER=  请输入 GitHub 用户名（回车用 zoesion）:
 if "%GHUSER%"=="" (
   echo  [错误] 用户名不能为空
   pause

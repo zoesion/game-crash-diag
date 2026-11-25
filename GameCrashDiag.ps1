@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.80'
+$script:AppVersion = 'v5.81'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -2610,7 +2610,7 @@ function Show-AboutDialog {
         "Diagnosis is rule-based reasoning over telemetry, not a professional repair service. If the same issue keeps happening, combine the report with official support or a repair shop.",
         "",
         "[Source]",
-        "GitHub: (to be added)",
+        "GitHub: https://github.com/zoesion/game-crash-diag",
         "",
         "This tool only monitors and collects evidence. It does not modify game files."
     )
@@ -2640,7 +2640,7 @@ function Show-AboutDialog {
         '诊断结论是基于遥测数据的规则判断，不是专业检修，仅供参考。如果反复出现同类问题，建议结合报告去找维修或官方支持。',
         '',
         '【开源地址】',
-        'GitHub：（待补充）',
+        'GitHub: https://github.com/zoesion/game-crash-diag',
         '',
         '本工具只做监控与取证，不修改游戏文件，不涉及任何破解。'
     )
