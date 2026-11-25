@@ -70,7 +70,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.88'
+$script:AppVersion = 'v5.89'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -154,8 +154,55 @@ if (-not $ForceGeneric) {
     } catch {}
 }
 
+# ── LibreHardwareMonitor 传感器库（随程序分发，用户无需安装）──
+# 用来补齐 nvidia-smi 读不到的数据：AMD / Intel 显卡的温度、功耗、频率，以及 CPU 封装温度。
+$script:HasLhm = $false
+$script:LhmCpuTemp = $null
+$script:LhmCpuAt = [datetime]::MinValue
+try {
+    $lhmDir = Join-Path $Root 'thirdparty\lhm'
+    $lhmDll = Join-Path $lhmDir 'LibreHardwareMonitorLib.dll'
+    $hidDll = Join-Path $lhmDir 'HidSharp.dll'
+    $lhmSrc = Join-Path $Root 'LhmBridge.cs'
+    if ((Test-Path $lhmDll) -and (Test-Path $hidDll) -and (Test-Path $lhmSrc)) {
+        # 网络下载会带 MOTW，.NET 拒绝加载被锁定的程序集，先解除
+        try { Get-ChildItem $lhmDir -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue } catch { }
+        [System.Reflection.Assembly]::LoadFrom($hidDll) | Out-Null
+        [System.Reflection.Assembly]::LoadFrom($lhmDll) | Out-Null
+        if (-not ('LhmBridge' -as [type])) {
+            Add-Type -Path $lhmSrc -ReferencedAssemblies @($lhmDll, $hidDll, 'System.dll', 'System.Core.dll')
+        }
+        if ([LhmBridge]::Init()) { $script:HasLhm = $true }
+    }
+} catch { $script:LhmError = $_.Exception.Message }
+
+
 # 通用模式：Windows 自带 GPU 性能计数器（A 卡 / 核显可用，只有占用率和显存）
 function Get-GenericGpuSample {
+    # 有 LHM 就用它的真实传感器（AMD / Intel 显卡的温度、功耗、频率都能读到）
+    if ($script:HasLhm) {
+        try {
+            $g = [LhmBridge]::ReadGpu()
+            if ($null -ne $g) {
+                $t = if ([double]::IsNaN($g[0])) { $null } else { [math]::Round($g[0], 1) }
+                $pw = if ([double]::IsNaN($g[1])) { $null } else { [math]::Round($g[1], 1) }
+                $clk = if ([double]::IsNaN($g[2])) { $null } else { [math]::Round($g[2], 0) }
+                $clkm = if ([double]::IsNaN($g[3])) { $null } else { [math]::Round($g[3], 0) }
+                $load = if ([double]::IsNaN($g[4])) { $null } else { [math]::Round($g[4], 0) }
+                $vr = if ([double]::IsNaN($g[5])) { $null } else { [math]::Round($g[5], 0) }
+                $vrt = if ([double]::IsNaN($g[6])) { $null } else { [math]::Round($g[6], 0) }
+                if ($null -ne $t -or $null -ne $load) {
+                    return [pscustomobject]@{
+                        Time = Get-Date; Temp = $t; Power = $pw; ClockSm = $clk; ClockMem = $clkm
+                        UtilGpu = $load; UtilMem = $null; MemUsed = $vr; MemTotal = $vrt
+                        PState = '-'; Reason = '-'; Throttle = '-'
+                        HotSpot = if ([double]::IsNaN($g[7])) { $null } else { [math]::Round($g[7], 1) }
+                    }
+                }
+            }
+        } catch { }
+    }
+
     $util = $null; $mem = $null
     try {
         $s = (Get-Counter '\GPU Engine(*engtype_3D)\Utilization Percentage' -ErrorAction Stop).CounterSamples
@@ -314,19 +361,29 @@ function Get-CpuSample {
         }
     } catch {}
 
-    # 温度：热区查询 30ms，缓存 10 秒
+    # 温度：优先用 LibreHardwareMonitor 的 CPU Package（比 ACPI 热区准），5 秒一采
     $now = Get-Date
-    if (-not $script:CpuTempCacheAt -or ($now - $script:CpuTempCacheAt).TotalSeconds -ge 10) {
+    if ($script:HasLhm -and ($now - $script:LhmCpuAt).TotalSeconds -ge 5) {
         try {
-            $tz = Get-CimInstance -ClassName Win32_PerfFormattedData_Counters_ThermalZoneInformation -ErrorAction Stop |
-                  Sort-Object { $_.HighPrecisionTemperature } -Descending | Select-Object -First 1
-            if ($tz -and $tz.HighPrecisionTemperature -gt 2732) {
-                $script:CpuTempCache = [math]::Round(($tz.HighPrecisionTemperature / 10) - 273.15, 1)
-            }
-        } catch {}
-        $script:CpuTempCacheAt = $now
+            $lt = [LhmBridge]::ReadCpuTemp()
+            if (-not [double]::IsNaN($lt) -and $lt -gt 0) { $script:LhmCpuTemp = [math]::Round($lt, 1) }
+        } catch { }
+        $script:LhmCpuAt = $now
     }
-    $s.Temp = $script:CpuTempCache
+    if ($null -ne $script:LhmCpuTemp) { $s.Temp = $script:LhmCpuTemp } else {
+        # 回退：ACPI 热区查询 30ms，缓存 10 秒
+        if (-not $script:CpuTempCacheAt -or ($now - $script:CpuTempCacheAt).TotalSeconds -ge 10) {
+            try {
+                $tz = Get-CimInstance -ClassName Win32_PerfFormattedData_Counters_ThermalZoneInformation -ErrorAction Stop |
+                      Sort-Object { $_.HighPrecisionTemperature } -Descending | Select-Object -First 1
+                if ($tz -and $tz.HighPrecisionTemperature -gt 2732) {
+                    $script:CpuTempCache = [math]::Round(($tz.HighPrecisionTemperature / 10) - 273.15, 1)
+                }
+            } catch {}
+            $script:CpuTempCacheAt = $now
+        }
+        $s.Temp = $script:CpuTempCache
+    }
 
     [pscustomobject]$s
 }
@@ -1862,6 +1919,8 @@ if ($UiTest) {
     Write-Output "  控件数: $($form.Controls.Count)"
     Write-Output "  采样值: 温度=$($valTemp.Text) 功耗=$($valPower.Text) 频率=$($valClock.Text) 占用=$($valUtil.Text) 活跃核心=$($valCpuCores.Text)"
     Write-Output "  CPU卡片: $($valCpuTemp.Text)   曲线末值: $($script:CpuTempHist[$script:CpuTempHist.Count-1])"
+    Write-Output "  数据源: HasNvidia=$($script:HasNvidia)  HasLhm=$($script:HasLhm)  LhmError=$($script:LhmError)"
+    Write-Output "  状态行: $($lblDetail.Text)"
     Write-Output "  GPU曲线: $($script:TempHist.Count) 点   CPU曲线: $($script:CpuTempHist.Count) 点"
     Write-Output "  记录中: $($script:Recording)   条数: $($script:LogCount)"
     Write-Output "  日志文件: $($script:LogFile)"

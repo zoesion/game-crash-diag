@@ -1,0 +1,18 @@
+﻿LibreHardwareMonitorLib 0.9.3
+https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+License: Mozilla Public License 2.0 (MPL-2.0)
+Full text: https://www.mozilla.org/en-US/MPL/2.0/
+
+Files bundled here:
+  LibreHardwareMonitorLib.dll  (0.9.3, net472 build)
+  HidSharp.dll                 (2.6.4, netstandard2.0 build)
+
+These libraries are used unmodified to read GPU / CPU sensors
+(temperature, power, clocks, fan speeds) on hardware where the
+vendor does not provide a command line tool - AMD GPUs in particular,
+where nvidia-smi has no equivalent.
+
+Source for both packages: https://www.nuget.org/packages/LibreHardwareMonitorLib/0.9.3
+                          https://www.nuget.org/packages/HidSharp/2.6.4
+
+GameCrashDiag itself is licensed under MIT; this directory is MPL-2.0.

@@ -19,7 +19,7 @@ thermal baseline, and concrete next steps. Chinese UI and reports by default; En
 
 **英文名 / 仓库名：GameCrashDiag / game-crash-diag**
 
-一个 PowerShell + WinForms 写的桌面小工具，**零依赖、不需安装运行时**，Windows 自带 PowerShell 就能跑。
+一个 PowerShell + C# 写的桌面小工具，**不需要安装任何运行库**，Windows 自带的 PowerShell 就能跑。
 游戏运行时自动记录显卡和处理器状态，崩溃时自动生成带现场数据的报告，用来定位到底是超频、散热、驱动还是硬件的问题。
 
 ![界面](preview.png)
@@ -51,7 +51,7 @@ thermal baseline, and concrete next steps. Chinese UI and reports by default; En
 | **自动记录** | 检测到**任意全屏游戏**自动开始（不需要游戏名单），退出自动结算 |
 | **日志分流** | 游戏时写 `logs\<游戏名>\`，不打游戏时写 `logs\system\`，互不污染 |
 | **崩溃取证** | 自动区分「崩溃」和「正常退出」，只对真崩溃告警 |
-| **通用模式** | 没有 N 卡也能跑（AMD / Intel 核显），自动降级 |
+| **A 卡 / 核显支持** | 内置 LibreHardwareMonitor，AMD、Intel 也能读温度功耗频率 |
 | **进阶脚本** | 取证包收集、minidump 解析、功耗墙调节、系统修复 |
 
 ---
@@ -312,113 +312,88 @@ logs\
 遇到库里没有的代码，报告会列出来并提示补进去。
 ## 显卡兼容性
 
-先说结论：**NVIDIA 功能完整，AMD 显卡和 AMD CPU 能用但会降级。**
+**NVIDIA、AMD、Intel 都能读到温度 / 功耗 / 频率了**，靠的是随程序分发的传感器库。
 
 | 硬件 | 状态 | 能读到的数据 |
 |---|---|---|
 | **NVIDIA 独显** | ✅ 完整 | 温度、功耗、核心/显存频率、占用、显存、降频原因、性能档 P 值 |
-| **AMD 独显** | ⚠️ 通用模式 | 只有 **GPU 占用率** 和 **显存占用** |
-| **Intel 核显** | ⚠️ 通用模式 | 只有 **GPU 占用率** 和 **显存占用** |
-| **Intel CPU** | ✅ 完整 | 温度（取决于主板是否暴露热区）、频率、占用、活跃核心 |
-| **AMD CPU** | ⚠️ 部分 | 频率、占用、活跃核心 **正常**；温度 **可能读不到** |
+| **AMD 独显** | ✅ 完整 | 温度、功耗、频率、占用、显存（走 AMD 驱动自带的 ADL 接口） |
+| **Intel 核显** | ✅ 可用 | 温度、功耗、频率、占用、显存 |
+| **Intel CPU** | ✅ 完整 | 封装温度、频率、占用、活跃核心 |
+| **AMD CPU** | ✅ 完整 | 封装温度、频率、占用、活跃核心 |
 
-### 为什么 AMD 显卡只能看占用率
+### 怎么做到的：内置 LibreHardwareMonitor
 
-NVIDIA 提供了命令行工具 `nvidia-smi`，温度 / 功耗 / 频率都能直接查。AMD 没有对等的东西
-（`aticonfig` 早就不维护了），要读这些传感器得走 AMD 的 ADL 库或者第三方驱动级工具。
-
-本项目的原则是**零依赖**（不装 .NET 以外的任何东西、不需要管理员权限、不改系统），
-所以 AMD / Intel 显卡退回 Windows 自带的 GPU 性能计数器：
+NVIDIA 有 `nvidia-smi`，AMD 没有对等工具。所以程序内置了
+[LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
+的传感器库（`thirdparty\lhm\`，MPL-2.0 许可，约 900 KB），由它统一读取：
 
 ```
-\GPU Engine(*engtype_3D)\Utilization Percentage   → GPU 占用率
-\GPU Adapter Memory(*)\Dedicated Usage            → 显存占用
+NVIDIA → NVAPI
+AMD    → ADL（atiadlxx.dll，显卡驱动自带）
+Intel  → 驱动接口 / 性能计数器
 ```
 
-这两项是 Windows 10/11 对所有显卡都提供的，所以**占用和显存一定能看到**，
-但温度 / 功耗 / 频率读不到，界面上显示为 `--`。
+**用户不需要装任何东西**：安装包和绿色包里已经带上这两个 DLL，安装时自动解除文件锁定。
 
-可以强制体验通用模式（NVIDIA 机器也能试）：
+### 回退顺序
+
+```
+1. NVIDIA 显卡 → 优先 nvidia-smi（能拿到降频原因和 P 状态）
+2. 其它显卡   → LibreHardwareMonitor
+3. 库加载失败 → Windows 自带 GPU 性能计数器（只剩占用率和显存）
+```
+
+第 3 级是兜底：即使 DLL 被杀毒软件拦掉、或者系统缺组件，程序依然能跑，只是数据变少。
+
+想强制体验兜底模式：
 
 ```powershell
 GameCrashDiag.ps1 -ForceGeneric
 ```
 
-### 为什么 AMD CPU 的温度可能读不到
+### CPU 温度
 
-CPU 温度走的是 Windows 的 ACPI 热区计数器：
+- 有 LibreHardwareMonitor：读 **CPU Package**（真实封装温度）
+- 读不到时回退 **ACPI 热区**（`ThermalZoneInformation`），部分 AMD 台式机主板不暴露
 
-```
-Win32_PerfFormattedData_Counters_ThermalZoneInformation
-```
+两者都拿不到时显示 `--`，不影响其它功能。
 
-Intel 笔记本通常有；**AMD 台式机主板大多不暴露这个计数器**，AMD 笔记本则因厂商而异。
-读不到时界面显示 `--`，不会报错，也不会影响其他功能。
+### 关于「零依赖」
+
+严格说，现在是「**用户零安装**」：
+
+- 不需要装 .NET 运行时（Windows 自带 4.x）
+- 不需要装 Python / Node / 额外驱动
+- 不需要管理员权限（安装器要 UAC 只是为了写 Program Files）
+- 传感器库随程序分发，不联网下载
+
+程序本身是 **PowerShell + C# 混合**：界面用 PowerShell，性能敏感的图表渲染
+（`ChartRenderer.cs`）和传感器桥接（`LhmBridge.cs`）用 C# 编译后调用。
 
 ### 崩溃诊断不受显卡品牌影响
 
-以下功能在 AMD / Intel 机器上**完全一样**：
+以下功能在所有机器上**完全一样**：
 
 - 崩溃判定（异常退出 + 事件日志 + 崩溃转储）
 - 25 条错误码解读（DXGI / 蓝屏 / 驱动事件）
 - 结论卡片、崩溃前曲线快照
-- 温度基线对比（有温度数据时）
+- 温度基线对比
 - DirectX 组件检查与修复
 - 中英双语、开机自启、重启接续
 
-### 后续计划（v6.0）
+### 第三方组件
 
-v6.0 打算自己实现传感器读取，**仍然保持零依赖**：
+| 组件 | 版本 | 许可 | 用途 |
+|---|---|---|---|
+| `LibreHardwareMonitorLib.dll` | 0.9.3 | MPL-2.0 | 读取 GPU / CPU 传感器 |
+| `HidSharp.dll` | 2.6.4 | Apache-2.0 | LHM 的依赖 |
 
-- 通过显卡驱动自带的 `atiadlxx.dll`（A 卡驱动自带，无需额外安装）读取 AMD 显卡温度 / 功耗
-- 尝试更底层的 CPU 温度读法，读不到就明确标注「该主板不支持」，而不是显示空白
-- 同时把内存占用从约 150 MB 降下来（当前受限于 PowerShell 宿主）
-
----
-
-## 命令行参数
-
-```powershell
-GameCrashDiag.ps1                     # 正常启动
-GameCrashDiag.ps1 -Minimized          # 最小化启动
-GameCrashDiag.ps1 -IntervalMs 250     # 改成 250ms 采样（更细，更费 CPU）
-GameCrashDiag.ps1 -ForceGeneric       # 强制通用模式
-GameCrashDiag.ps1 -SelfTest           # 采集自检
-GameCrashDiag.ps1 -UiTest             # 界面自检（不弹窗）
-GameCrashDiag.ps1 -Shot out.png       # 离屏截图
-```
+许可证全文见 `thirdparty\lhm\LICENSE.txt`。
 
 ---
 
-## 常见问题
 
-**Q: 窗口显示「读取失败」**
-`nvidia-smi` 没响应，多半是驱动刚崩了正在恢复，等几秒自动恢复。
-
-**Q: 记录中但数据不涨**
-确认 `bf6.exe` 在跑。系统监控模式下也会记录，只是写到 `logs\system\`。
-
-**Q: 游戏崩了但没生成报告**
-程序必须开着才有效。没开的话只能用 `tools\collect-forensics.ps1` 事后捞事件日志（没有秒级遥测）。
-
-**Q: 怎么开机自启**
-左上角 ☰ 菜单 → 勾选「开机自动启动」即可，会写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`。
-开机后**直接进托盘，不弹窗口**，后台自动开始记录。取消勾选就移除。
-
-**Q: 关掉窗口后程序还在跑？**
-是的。点 X 只是收到托盘继续记录，双击托盘图标可以重新打开。
-要真正退出，右键托盘图标 → 退出。
-
----
-
-## 技术说明
-
-- 界面：PowerShell + WinForms，深色主题
-- 绘图：C# 编译的渲染器（`ChartRenderer.cs`），1 万点重绘 ~30ms
-- 采样：`nvidia-smi` / Windows 性能计数器，Timer 驱动
-- 无外部依赖，不联网，不上传任何数据
-
----
 
 ## 路线图：v6.0
 

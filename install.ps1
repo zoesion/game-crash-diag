@@ -67,7 +67,7 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 foreach ($sub in 'logs','reports','backup') {
     New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir $sub) | Out-Null
 }
-$files = @('GameCrashDiag.ps1','ChartRenderer.cs','启动诊断器.vbs','自启-托盘.vbs','调试启动.cmd','app.ico','README.md')
+$files = @('GameCrashDiag.ps1','ChartRenderer.cs','LhmBridge.cs','启动诊断器.vbs','自启-托盘.vbs','调试启动.cmd','app.ico','README.md')
 foreach ($f in $files) {
     $p = Join-Path $src $f
     if (Test-Path $p) { Copy-WithRetry $p $InstallDir | Out-Null }
@@ -79,6 +79,10 @@ if (Test-Path $dataSrc) {
 $langSrc = Join-Path $src 'lang'
 if (Test-Path $langSrc) {
     Copy-WithRetry $langSrc (Join-Path $InstallDir 'lang') -Recurse | Out-Null
+}
+$lhmSrc = Join-Path $src 'thirdparty'
+if (Test-Path $lhmSrc) {
+    Copy-WithRetry $lhmSrc (Join-Path $InstallDir 'thirdparty') -Recurse | Out-Null
 }
 $toolSrc = Join-Path $src 'tools'
 if (Test-Path $toolSrc) {
@@ -162,7 +166,10 @@ New-ItemProperty -Path $regPath -Name 'EstimatedSize' -Value ([int]($size / 1KB)
 Write-Host '        -> 控制面板可见' -ForegroundColor Green
 
 # ── 4. 完成 ──
-Write-Host '  [4/4] 完成' -ForegroundColor Yellow
+Write-Host '    解除文件锁定...
+    Get-ChildItem $InstallDir -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue
+
+    [4/4] 完成' -ForegroundColor Yellow
 Write-Host ''
 Write-Host '  安装完成！' -ForegroundColor Green
 Write-Host "  位置: $InstallDir" -ForegroundColor Gray

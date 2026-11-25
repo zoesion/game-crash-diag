@@ -28,13 +28,14 @@ if (-not (Test-Path $cs)) { throw "找不到 setup\Setup.cs" }
 $payload = Join-Path $setupDir 'app.zip'
 Remove-Item $payload -Force -ErrorAction SilentlyContinue
 $items = @()
-foreach ($f in 'GameCrashDiag.ps1', 'ChartRenderer.cs', '启动诊断器.vbs','自启-托盘.vbs', '调试启动.cmd', 'app.ico',
+foreach ($f in 'GameCrashDiag.ps1', 'ChartRenderer.cs', 'LhmBridge.cs', '启动诊断器.vbs','自启-托盘.vbs', '调试启动.cmd', 'app.ico',
                'README.md', 'LICENSE', 'install.ps1', 'uninstall.ps1', '安装.cmd', '卸载.cmd',
                '解除锁定.cmd', '推送到GitHub.cmd', '使用说明.txt', 'preview.png',
                '创建快捷方式.ps1', '创建桌面快捷方式.cmd') {
     $p = Join-Path $root $f
     if (Test-Path $p) { $items += $p }
 }
+$items += (Join-Path $root 'thirdparty')
 $items += (Join-Path $root 'tools')
 $items += (Join-Path $root 'data')
 $items += (Join-Path $root 'lang')
