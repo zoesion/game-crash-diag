@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.76'
+$script:AppVersion = 'v5.77'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -886,6 +886,7 @@ function Restore-HistoryFromLastLog {
             [void]$script:CpuHistTime.Add($dt)
             [void]$script:CpuTempHist.Add($cv)
             [void]$script:CpuFreqHist.Add($fv)
+            $script:RestoreLastTime = $dt
             $added++
         }
         return $added
@@ -1233,6 +1234,19 @@ function Draw-SessionMarker($bmp, $from, $cnt) {
         $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
         $g.DrawLine($pen, $x, 6, $x, $bmp.Height - 6)
         $pen.Dispose()
+
+        # 在分界线旁标注间隔时长
+        if ($script:SessionGapMin -gt 0) {
+            $gapTxt = if ($script:SessionGapMin -ge 60) { '隔 {0:0.#} 小时' -f ($script:SessionGapMin / 60.0) } else { '隔 {0} 分钟' -f $script:SessionGapMin }
+            $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(160, 170, 170, 190))
+            $font = New-Object System.Drawing.Font('微软雅黑', 7)
+            $sz = $g.MeasureString($gapTxt, $font)
+            $tx = $x - $sz.Width - 4
+            if ($tx -lt 2) { $tx = $x + 4 }
+            $g.DrawString($gapTxt, $font, $brush, $tx, 4)
+            $font.Dispose()
+            $brush.Dispose()
+        }
         $g.Dispose()
     } catch {}
 }
@@ -1614,6 +1628,9 @@ $form.Add_Shown({
         Start-Logging 'system'
         # 接上上次的曲线：Start-Logging 会清空缓冲，必须放在它之后
         try { $script:RestoredCount = Restore-HistoryFromLastLog } catch { $script:RestoredCount = 0 }
+        if ($script:RestoredCount -gt 0 -and $script:RestoreLastTime) {
+            $script:SessionGapMin = [int][math]::Round(((Get-Date) - $script:RestoreLastTime).TotalMinutes)
+        }
         $lblHint.Text = $script:T.HintNoGame
         if ($script:RestoredCount -gt 0) { $lblHint.Text += "  (已接上上次的 $($script:RestoredCount) 个采样)" }
     }
