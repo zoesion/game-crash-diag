@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.75'
+$script:AppVersion = 'v5.76'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1218,6 +1218,25 @@ function Reset-View {
     Draw-Chart
 }
 
+function Draw-SessionMarker($bmp, $from, $cnt) {
+    <# 上一次会话与本此会话的分界，画一条竖向虚线 #>
+    try {
+        if (-not $script:RestoredCount -or $script:RestoredCount -le 0) { return }
+        if (-not $bmp) { return }
+        $b = $script:RestoredCount - 1
+        if ($cnt -lt 2) { return }
+        if ($b -lt $from -or $b -gt ($from + $cnt - 1)) { return }
+        $frac = ($b - $from) / [double]($cnt - 1)
+        $x = [int](6 + $frac * ($bmp.Width - 12))
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(110, 150, 150, 172), 1)
+        $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
+        $g.DrawLine($pen, $x, 6, $x, $bmp.Height - 6)
+        $pen.Dispose()
+        $g.Dispose()
+    } catch {}
+}
+
 function Draw-Chart {
     if ($null -eq $script:TempHist -or $script:TempHist.Count -lt 1) { return }
     if (-not (Ensure-ChartBitmaps)) { return }
@@ -1260,6 +1279,7 @@ function Draw-Chart {
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 $labA, $labB, '%', 'MB', $script:GpuHover)
         }
+        Draw-SessionMarker $script:chartBmp $r.From $cnt
         $chart.Refresh()
     }
 
@@ -1284,6 +1304,7 @@ function Draw-Chart {
             [ChartRenderer]::Render($script:cpuBmp, $aCpu, $bCpu, $cCnt,
                 $C.Card, $C.Grid, $C.Accent, $script:ColPurple, $C.Dim, $cInfo,
                 $labC, $labF, '°C', 'MHz', $script:CpuHover)
+            Draw-SessionMarker $script:cpuBmp $r.From $cCnt
             $cpuChart.Refresh()
 
             $cpuChart.Refresh()
@@ -1470,7 +1491,7 @@ $script:GameScanResult = $null
         $script:BtnRestore = $null
     }
 
-    $lblStats.Text = ("{0} {1:N0}    {2} {3}    {4} {5}" -f $script:T.RowLogCount, [int]$script:LogCount, $script:T.RowReports, [int]$script:ReportCount, $script:T.RowFile, $(if ($script:LogFile) { Split-Path $script:LogFile -Leaf } else { "-" }))
+    $lblStats.Text = ("{0} {1:N0}（本次）    {2} {3}    {4} {5}" -f $script:T.RowLogCount, [int]$script:LogCount, $script:T.RowReports, [int]$script:ReportCount, $script:T.RowFile, $(if ($script:LogFile) { Split-Path $script:LogFile -Leaf } else { "-" }))
 }
 
 # ════════════════════════════════ 鼠标悬停提示 ════════════════════════════════
