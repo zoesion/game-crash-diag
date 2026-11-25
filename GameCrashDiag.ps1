@@ -27,6 +27,7 @@ param(
     [switch]$ShowAbout,
     [switch]$ShowDiagnosis,
     [switch]$TestCrash,
+    [switch]$TestClear,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -68,7 +69,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.85'
+$script:AppVersion = 'v5.86'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -730,40 +731,27 @@ $miClearChart = $miClear.DropDownItems.Add($script:T.ClearChart)
 $miClearAll   = $miClear.DropDownItems.Add($script:T.ClearAll)
 
 $miClearChart.Add_Click({
+    $script:Timer.Stop()
     try {
-        $script:TempHist.Clear(); $script:PowerHist.Clear()
-        $script:CpuTempHist.Clear(); $script:CpuFreqHist.Clear()
-        $script:HistTime.Clear(); $script:CpuHistTime.Clear()
-        $script:RestoredCount = 0
-        $script:SessionGapMin = 0
-        $script:GpuHover = -1; $script:CpuHover = -1
+        Clear-ChartData
         Draw-Chart
         $lblHint.Text = $script:T.ClearChartDone
-    } catch {}
+        $lblStatus.Text = $(if ($script:Recording) { $script:T.StatusRec } else { $script:T.StatusIdle })
+        $lblStatus.ForeColor = $C.Accent
+    } catch {} finally { $script:Timer.Start() }
 })
 
 $miClearAll.Add_Click({
     $ans = [System.Windows.Forms.MessageBox]::Show($script:T.ClearAsk, $script:T.AppTitle, 'YesNo', 'Warning')
     if ($ans -ne 'Yes') { return }
+    $script:Timer.Stop()
     try {
-        if ($script:Recording) { Stop-Logging }
-        foreach ($sub in @('logs', 'reports')) {
-            $path = Join-Path $Root $sub
-            if (Test-Path $path) {
-                Get-ChildItem $path -Recurse -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-            }
-        }
-        $script:TempHist.Clear(); $script:PowerHist.Clear()
-        $script:CpuTempHist.Clear(); $script:CpuFreqHist.Clear()
-        $script:HistTime.Clear(); $script:CpuHistTime.Clear()
-        $script:RestoredCount = 0
-        $script:SessionGapMin = 0
-        $script:LogCount = 0
-        $script:ReportCount = 0
-        Start-Logging 'system'
+        Clear-AllData
         Draw-Chart
         $lblHint.Text = $script:T.ClearDone
-    } catch {}
+        $lblStatus.Text = $script:T.StatusRec
+        $lblStatus.ForeColor = $C.Accent
+    } catch {} finally { $script:Timer.Start() }
 })
 $miDxStatus = $script:MainMenu.Items.Add($script:T.DxChecking)
 $miDxStatus.Enabled = $false
@@ -933,6 +921,37 @@ function Restore-HistoryFromLastLog {
         return $added
     }
     catch { return 0 }
+}
+
+function Clear-ChartData {
+    # 只清内存里的曲线，不动磁盘文件
+    $script:Clearing = $true
+    try {
+        $script:TempHist.Clear(); $script:PowerHist.Clear()
+        $script:CpuTempHist.Clear(); $script:CpuFreqHist.Clear()
+        $script:HistTime.Clear(); $script:CpuHistTime.Clear()
+        $script:RestoredCount = 0
+        $script:SessionGapMin = 0
+        $script:GpuHover = -1
+        $script:CpuHover = -1
+    }
+    finally { $script:Clearing = $false }
+}
+
+function Clear-AllData {
+    # 清空历史：停记录 → 删文件 → 清内存 → 重新开始记录
+    if ($script:Recording) { Stop-Logging }
+    foreach ($sub in @('logs', 'reports')) {
+        $path = Join-Path $Root $sub
+        if (Test-Path $path) {
+            Get-ChildItem $path -Recurse -File -ErrorAction SilentlyContinue |
+                Remove-Item -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Clear-ChartData
+    $script:LogCount = 0
+    $script:ReportCount = 0
+    Start-Logging 'system'
 }
 
 function Start-Logging([string]$Category = 'system') {
@@ -1667,7 +1686,15 @@ $miStop.Enabled = $false
 
 $script:Timer = New-Object System.Windows.Forms.Timer
 $script:Timer.Interval = $script:IntervalMs
-$script:Timer.Add_Tick({ try { Update-UI } catch { $lblStatus.Text = '✕ 错误'; $lblStatus.ForeColor = $C.Bad } })
+$script:Timer.Add_Tick({
+    if ($script:Clearing) { return }
+    try { Update-UI }
+    catch {
+        $lblStatus.Text = '✕ 错误'
+        $lblStatus.ForeColor = $C.Bad
+        try { Set-Content (Join-Path $env:TEMP 'gcd-ui-error.txt') -Value ((Get-Date).ToString('HH:mm:ss') + " " + ($_ | Out-String) + "`n" + $_.ScriptStackTrace) -Encoding UTF8 } catch {}
+    }
+})
 
 $form.Add_Shown({
     $script:Timer.Start()
@@ -1758,7 +1785,7 @@ try {
 catch { }
 
 # ── 单实例保护：重复点图标只保留一个实例 ──
-if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView -or $TestCrash -or $ShowAbout -or $ShowDiagnosis)) {
+if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView -or $TestCrash -or $TestClear -or $ShowAbout -or $ShowDiagnosis)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
         # 已有实例：写信号文件让它把窗口弹出来，然后静默退出
@@ -3021,6 +3048,19 @@ if ($ShowAbout -or $ShowDiagnosis) {
     Start-Sleep -Milliseconds 800
     try { Update-DxIndicator } catch {}
     if ($ShowAbout) { Show-AboutDialog } else { Show-DiagnosisWindow }
+    exit 0
+}
+if ($TestClear) {
+    Start-Logging 'system'
+    for ($i = 0; $i -lt 8; $i++) { Update-UI; Start-Sleep -Milliseconds 200 }
+    Write-Output "清空前: 缓冲=$($script:TempHist.Count) 时间=$($script:HistTime.Count) 记录=$($script:LogCount)"
+    Clear-AllData
+    Write-Output "清空后: 缓冲=$($script:TempHist.Count) 时间=$($script:HistTime.Count) 记录=$($script:LogCount) 文件=$($script:LogFile)"
+    for ($i = 0; $i -lt 6; $i++) {
+        try { Update-UI; Draw-Chart; Write-Output "  刷新 $($i+1) 正常" }
+        catch { Write-Output ("  刷新 $($i+1) 异常: " + $_.Exception.Message); Write-Output ("    " + $_.ScriptStackTrace) }
+        Start-Sleep -Milliseconds 400
+    }
     exit 0
 }
 if ($TestCrash) {
