@@ -60,11 +60,31 @@ public static class ChartRenderer
                 return;
             }
 
-            // 降采样到最多 720 点
-            int stride = Math.Max(1, (int)Math.Ceiling(count / 720.0));
+            int SoftLimit = 2000;
             List<int> idx = new List<int>();
-            for (int i = 0; i < count; i += stride) idx.Add(i);
-            if (idx[idx.Count - 1] != count - 1) idx.Add(count - 1);
+            if (count <= SoftLimit)
+            {
+                for (int i = 0; i < count; i++) idx.Add(i);
+            }
+            else
+            {
+                int bucket = (int)Math.Ceiling(count / (double)(SoftLimit / 2));
+                if (bucket < 2) bucket = 2;
+                for (int s = 0; s < count; s += bucket)
+                {
+                    int e = Math.Min(count - 1, s + bucket - 1);
+                    int iMin = s, iMax = s;
+                    for (int i = s; i <= e; i++)
+                    {
+                        if (a[i] < a[iMin]) iMin = i;
+                        if (a[i] > a[iMax]) iMax = i;
+                    }
+                    if (iMin == iMax) { idx.Add(iMin); }
+                    else if (iMin < iMax) { idx.Add(iMin); idx.Add(iMax); }
+                    else { idx.Add(iMax); idx.Add(iMin); }
+                }
+                if (idx.Count == 0 || idx[idx.Count - 1] != count - 1) idx.Add(count - 1);
+            }
             int n = idx.Count;
             LastPointCount = n;
 
