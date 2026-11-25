@@ -28,6 +28,7 @@ param(
     [switch]$ShowDiagnosis,
     [switch]$TestCrash,
     [switch]$TestClear,
+    [switch]$TestGameStart,
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -69,7 +70,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.87'
+$script:AppVersion = 'v5.88'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -969,8 +970,16 @@ function Start-Logging([string]$Category = 'system') {
     Set-Content -Path $script:LogFile -Value $hdr -Encoding UTF8
     $script:LogCount = 0
     $script:Recording = $true
+    # 六条曲线必须等长，否则 CPU 曲线会跟 GPU 错位（显示到旧数据）
     $script:TempHist.Clear()
     $script:PowerHist.Clear()
+    $script:CpuTempHist.Clear()
+    $script:CpuFreqHist.Clear()
+    $script:HistTime.Clear()
+    $script:CpuHistTime.Clear()
+    $script:RestoredCount = 0
+    $script:SessionGapMin = 0
+    $script:LastActiveCores = 0
     $miStart.Enabled = $false
     $miStop.Enabled = $true
     $lblStatus.Text = $script:T.StatusRec
@@ -1314,6 +1323,29 @@ function Draw-SessionMarker($bmp, $from, $cnt) {
 function Draw-Chart {
     if ($null -eq $script:TempHist -or $script:TempHist.Count -lt 1) { return }
     if (-not (Ensure-ChartBitmaps)) { return }
+
+    # 自愈：四条曲线必须等长。若 CPU 列表比 GPU 长（历史遗留），
+    # 从头部裁掉多出来的旧点，否则 CPU 曲线会被切到旧数据上。
+    try {
+        $diff = $script:CpuTempHist.Count - $script:TempHist.Count
+        if ($diff -gt 0) {
+            $script:CpuTempHist.RemoveRange(0, [math]::Min($diff, $script:CpuTempHist.Count))
+            if ($script:CpuFreqHist.Count -ge $diff) { $script:CpuFreqHist.RemoveRange(0, $diff) }
+            if ($script:CpuHistTime.Count -ge $diff) { $script:CpuHistTime.RemoveRange(0, $diff) }
+        }
+        elseif ($diff -lt 0) {
+            $need = -$diff
+            if ($script:CpuFreqHist.Count -ge $script:CpuTempHist.Count) {
+                $fill = [double]($script:CpuTempHist[$script:CpuTempHist.Count - 1])
+                $fillF = [double]($script:CpuFreqHist[$script:CpuFreqHist.Count - 1])
+                for ($q = 0; $q -lt $need; $q++) {
+                    [void]$script:CpuTempHist.Insert(0, $fill)
+                    [void]$script:CpuFreqHist.Insert(0, $fillF)
+                    [void]$script:CpuHistTime.Insert(0, $script:HistTime[0])
+                }
+            }
+        }
+    } catch {}
 
     $secPerPt = $script:IntervalMs / 1000.0
     $r = Get-ViewRange
@@ -1785,7 +1817,7 @@ try {
 catch { }
 
 # ── 单实例保护：重复点图标只保留一个实例 ──
-if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView -or $TestCrash -or $TestClear -or $ShowAbout -or $ShowDiagnosis)) {
+if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView -or $TestCrash -or $TestClear -or $TestGameStart -or $ShowAbout -or $ShowDiagnosis)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
         # 已有实例：写信号文件让它把窗口弹出来，然后静默退出
@@ -1829,6 +1861,8 @@ if ($UiTest) {
     Write-Output "UI 自检通过"
     Write-Output "  控件数: $($form.Controls.Count)"
     Write-Output "  采样值: 温度=$($valTemp.Text) 功耗=$($valPower.Text) 频率=$($valClock.Text) 占用=$($valUtil.Text) 活跃核心=$($valCpuCores.Text)"
+    Write-Output "  CPU卡片: $($valCpuTemp.Text)   曲线末值: $($script:CpuTempHist[$script:CpuTempHist.Count-1])"
+    Write-Output "  GPU曲线: $($script:TempHist.Count) 点   CPU曲线: $($script:CpuTempHist.Count) 点"
     Write-Output "  记录中: $($script:Recording)   条数: $($script:LogCount)"
     Write-Output "  日志文件: $($script:LogFile)"
     $form.Dispose()
@@ -3050,6 +3084,22 @@ if ($ShowAbout -or $ShowDiagnosis) {
     if ($ShowAbout) { Show-AboutDialog } else { Show-DiagnosisWindow }
     exit 0
 }
+if ($TestGameStart) {
+    # 复现「游戏中开局」场景：先记录一段，再 Start-Logging（模拟检测到游戏），检查四条曲线是否等长
+    Start-Logging 'system'
+    for ($i = 0; $i -lt 6; $i++) { Update-UI; Start-Sleep -Milliseconds 200 }
+    Write-Output ("开局前: GPU=$($script:TempHist.Count) CPU=$($script:CpuTempHist.Count) 时间GPU=$($script:HistTime.Count) 时间CPU=$($script:CpuHistTime.Count)")
+    Start-Logging 'system'
+    Write-Output ("Start-Logging 后: GPU=$($script:TempHist.Count) CPU=$($script:CpuTempHist.Count)")
+    for ($i = 0; $i -lt 6; $i++) { Update-UI; Start-Sleep -Milliseconds 200 }
+    Write-Output ("再采 6 次后: GPU=$($script:TempHist.Count) CPU=$($script:CpuTempHist.Count) 时间GPU=$($script:HistTime.Count) 时间CPU=$($script:CpuHistTime.Count)")
+    $ok = ($script:TempHist.Count -eq $script:CpuTempHist.Count -and $script:HistTime.Count -eq $script:CpuHistTime.Count)
+    Write-Output ("四条曲线等长: " + $ok)
+    Draw-Chart
+    Write-Output "绘制完成"
+    exit 0
+}
+
 if ($TestClear) {
     Start-Logging 'system'
     for ($i = 0; $i -lt 8; $i++) { Update-UI; Start-Sleep -Milliseconds 200 }
