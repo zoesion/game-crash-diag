@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.72'
+$script:AppVersion = 'v5.73'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -551,25 +551,112 @@ foreach ($pair in @(
 # ── 底部信息 ──
 # ── 时间轴滚动条（浏览器样式，自动跟随最新）──
 $script:FollowLive = $true
-$script:HistBar = New-Object System.Windows.Forms.HScrollBar
-$script:HistBar.Location = New-Object System.Drawing.Point(6, 452)
-$script:HistBar.Size = New-Object System.Drawing.Size(748, 16)
-$script:HistBar.SmallChange = 60
-$script:HistBar.LargeChange = 600
-$script:HistBar.Minimum = 0
-$script:HistBar.Maximum = 0
-$script:HistBar.Visible = $false
-$script:HistBar.Add_Scroll({
-    $maxV = $script:HistBar.Maximum - $script:HistBar.LargeChange + 1
-    if ($maxV -lt 0) { $maxV = 0 }
-    $v = [math]::Max(0, [math]::Min($script:HistBar.Value, $maxV))
-    $script:ViewShiftPts = $maxV - $v
+$script:BarTrack   = [System.Drawing.Color]::FromArgb(38, 38, 46)
+$script:BarThumb   = [System.Drawing.Color]::FromArgb(112, 112, 126)
+$script:BarThumbHot = [System.Drawing.Color]::FromArgb(158, 158, 174)
+$script:BarDrag = $false
+$script:BarDragX = 0
+$script:BarDragShift = 0
+
+# 自绘滚动条：细灰色圆角拖动条（替代系统 HScrollBar）
+$script:ChartBar = New-Object System.Windows.Forms.Panel
+$script:ChartBar.Location = New-Object System.Drawing.Point(6, 452)
+$script:ChartBar.Size = New-Object System.Drawing.Size(748, 10)
+$script:ChartBar.BackColor = $script:BarTrack
+$script:ChartBar.Visible = $false
+
+$script:ChartThumb = New-Object System.Windows.Forms.Panel
+$script:ChartThumb.Size = New-Object System.Drawing.Size(120, 8)
+$script:ChartThumb.Location = New-Object System.Drawing.Point(0, 2)
+$script:ChartThumb.BackColor = $script:BarThumb
+$script:ChartBar.Controls.Add($script:ChartThumb)
+
+function Update-ChartThumbShape {
+    try {
+        $w = $script:ChartThumb.Width; $h = $script:ChartThumb.Height
+        if ($w -lt 8 -or $h -lt 4) { return }
+        $r = [int][math]::Min(4, $h / 2)
+        $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $gp.AddArc(0, 0, $r * 2, $r * 2, 180, 90)
+        $gp.AddArc($w - $r * 2, 0, $r * 2, $r * 2, 270, 90)
+        $gp.AddArc($w - $r * 2, $h - $r * 2, $r * 2, $r * 2, 0, 90)
+        $gp.AddArc(0, $h - $r * 2, $r * 2, $r * 2, 90, 90)
+        $gp.CloseFigure()
+        $old = $script:ChartThumb.Region
+        $script:ChartThumb.Region = New-Object System.Drawing.Region($gp)
+        if ($old) { $old.Dispose() }
+        $gp.Dispose()
+    } catch { }
+}
+
+function Get-ChartScrollable {
+    $total = $script:TempHist.Count
+    $span = [math]::Max(1, [int]$script:ViewSpanPts)
+    return [math]::Max(0, $total - $span)
+}
+
+function Set-ChartShiftFromThumb {
+    $travel = [math]::Max(1, $script:ChartBar.Width - $script:ChartThumb.Width)
+    $scrollable = Get-ChartScrollable
+    if ($scrollable -le 0) { $script:ViewShiftPts = 0; $script:FollowLive = $true; return }
+    $ratio = [math]::Min(1.0, [math]::Max(0.0, $script:ChartThumb.Left / $travel))
+    $script:ViewShiftPts = [int][math]::Round((1 - $ratio) * $scrollable)
     $script:FollowLive = ($script:ViewShiftPts -le 0)
     $script:GpuHover = -1
     $script:CpuHover = -1
     Draw-Chart
+}
+
+function Update-ChartBar {
+    $total = $script:TempHist.Count
+    $span = [math]::Max(1, [int]$script:ViewSpanPts)
+    if ($total -le $span -or $script:ChartBar.Width -lt 40) { $script:ChartBar.Visible = $false; return }
+    $script:ChartBar.Visible = $true
+    $w = $script:ChartBar.Width
+    $tw = [int][math]::Max(28, [math]::Round($w * ($span / [double]$total)))
+    if ($tw -gt $w) { $tw = $w }
+    if ($script:ChartThumb.Width -ne $tw) { $script:ChartThumb.Width = $tw; Update-ChartThumbShape }
+    $travel = [math]::Max(0, $w - $tw)
+    $scrollable = [math]::Max(1, $total - $span)
+    $pos = [int][math]::Round($travel * (1 - [math]::Min(1.0, $script:ViewShiftPts / [double]$scrollable)))
+    $script:ChartThumb.Left = $pos
+    $script:ChartBar.BringToFront()
+}
+
+$script:ChartThumb.Add_MouseDown({ param($s, $e)
+    $script:BarDrag = $true
+    $script:BarDragX = [System.Windows.Forms.Cursor]::Position.X
+    $script:BarDragShift = $script:ViewShiftPts
 })
-$form.Controls.Add($script:HistBar)
+$script:ChartThumb.Add_MouseMove({ param($s, $e)
+    if (-not $script:BarDrag) { return }
+    $dx = [System.Windows.Forms.Cursor]::Position.X - $script:BarDragX
+    $travel = [math]::Max(1, $script:ChartBar.Width - $script:ChartThumb.Width)
+    $scrollable = Get-ChartScrollable
+    if ($scrollable -le 0) { return }
+    $shift = $script:BarDragShift - [int][math]::Round($dx / $travel * $scrollable)
+    if ($shift -lt 0) { $shift = 0 }
+    if ($shift -gt $scrollable) { $shift = $scrollable }
+    $script:ViewShiftPts = $shift
+    $script:FollowLive = ($shift -le 0)
+    $script:GpuHover = -1
+    $script:CpuHover = -1
+    Draw-Chart
+})
+$script:ChartThumb.Add_MouseUp({ param($s, $e) $script:BarDrag = $false })
+$script:ChartThumb.Add_MouseEnter({ param($s, $e) $script:ChartThumb.BackColor = $script:BarThumbHot })
+$script:ChartThumb.Add_MouseLeave({ param($s, $e) if (-not $script:BarDrag) { $script:ChartThumb.BackColor = $script:BarThumb } })
+
+$script:ChartBar.Add_MouseDown({ param($s, $e)
+    # 点空白处：跳到该位置
+    $travel = [math]::Max(1, $script:ChartBar.Width - $script:ChartThumb.Width)
+    $x = $e.X - [int]($script:ChartThumb.Width / 2)
+    if ($x -lt 0) { $x = 0 }
+    if ($x -gt $travel) { $x = $travel }
+    $script:ChartThumb.Left = $x
+    Set-ChartShiftFromThumb
+})
+$form.Controls.Add($script:ChartBar)
 $script:ColRed    = [System.Drawing.Color]::FromArgb(90, 155, 220)     # 功耗曲线（冷蓝）
 $script:ColPurple = [System.Drawing.Color]::FromArgb(150, 130, 220)    # 频率曲线（淡紫）
 
@@ -1095,20 +1182,8 @@ function Draw-Chart {
     $cnt = [int]$r.Count
     if ($cnt -lt 1) { return }
 
-    # 同步滚动条
-    try {
-        $total = $script:TempHist.Count
-        $spanPts = [math]::Max(1, [int]$r.Span)
-        $maxShift = [math]::Max(0, $total - $spanPts)
-        $script:HistBar.LargeChange = $spanPts
-        $script:HistBar.SmallChange = [math]::Max(1, [int]($spanPts / 10))
-        $script:HistBar.Maximum = $maxShift + $spanPts - 1
-        $want = $maxShift - [int]$r.Shift
-        if ($want -lt 0) { $want = 0 }
-        if ($script:HistBar.Value -ne $want) { $script:HistBar.Value = $want }
-        $script:HistBar.Visible = ($total -gt $spanPts)
-    }
-    catch { }
+    # 同步自绘滚动条
+    try { Update-ChartBar } catch { }
 
     $spanMin = [math]::Round($cnt * $secPerPt / 60.0, 1)
     $infoTxt = (("{0} · {1} · {2}" -f ($script:T.ChartPerPoint -f $secPerPt), ($script:T.ChartPoints -f $cnt), ($script:T.ChartMinutes -f $spanMin)))
@@ -1517,6 +1592,8 @@ try {
     # 两张曲线图撑满
     $chart.Left = $M;      $chart.Width = $inner
     $cpuChart.Left = $M;   $cpuChart.Width = $inner
+    # 自绘滚动条与图表同宽
+    if ($script:ChartBar) { $script:ChartBar.Left = $M; $script:ChartBar.Width = $inner }
 
     # 左侧文字
     foreach ($l in @($lblSub, $lblCpuModel, $lblDetail, $lblStats, $lblHint, $lblVer)) {
@@ -2699,6 +2776,8 @@ $form.Add_FormClosing({
             $trayIcon.ShowBalloonTip(1500, $script:T.AppTitle, $script:T.TrayBalloon, [System.Windows.Forms.ToolTipIcon]::Info)
         } catch {}
     }
+
+
 })
 if ($Shot) {
     try { Update-DxIndicator } catch {}
