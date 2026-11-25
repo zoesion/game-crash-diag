@@ -84,4 +84,12 @@
     PStateIdle   = '{0} idle'
     PStateDeep   = '{0} deep idle'
     GapLabel     = '{0} gap'
-    RestoredHint = ' ({0} restored)'}
+    RestoredHint = ' ({0} restored)'
+
+    MenuClear      = 'Clear data'
+    ClearChart     = 'Clear chart only (screen)'
+    ClearAll       = 'Clear all history (logs / reports)'
+    ClearAsk       = 'Delete all recorded history? This removes every file under logs and reports. It cannot be undone.'
+    ClearDone      = 'All history cleared'
+    ClearChartDone = 'Chart cleared'
+}

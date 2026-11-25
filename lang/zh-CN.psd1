@@ -84,4 +84,12 @@
     PStateIdle   = '{0} 待机省电'
     PStateDeep   = '{0} 深度待机'
     GapLabel     = '隔 {0}'
-    RestoredHint = '（接上次 {0} 点）'}
+    RestoredHint = '（接上次 {0} 点）'
+
+    MenuClear      = '清空数据'
+    ClearChart     = '清空曲线（只清屏幕上的）'
+    ClearAll       = '清空全部历史（删 logs / reports）'
+    ClearAsk       = '确定清空全部历史数据？会删除 logs 和 reports 里的所有文件，不可恢复。'
+    ClearDone      = '已清空全部历史'
+    ClearChartDone = '曲线已清空'
+}

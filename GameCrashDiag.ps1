@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.84'
+$script:AppVersion = 'v5.85'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -724,6 +724,47 @@ $miStop  = $script:MainMenu.Items.Add($script:T.MenuStop)
 $miLogs  = $script:MainMenu.Items.Add($script:T.MenuLogs)
 $miRep   = $script:MainMenu.Items.Add($script:T.MenuReports)
 $miDiag  = $script:MainMenu.Items.Add($script:T.MenuDiag)
+# ── 清空数据 ──
+$miClear = $script:MainMenu.Items.Add($script:T.MenuClear)
+$miClearChart = $miClear.DropDownItems.Add($script:T.ClearChart)
+$miClearAll   = $miClear.DropDownItems.Add($script:T.ClearAll)
+
+$miClearChart.Add_Click({
+    try {
+        $script:TempHist.Clear(); $script:PowerHist.Clear()
+        $script:CpuTempHist.Clear(); $script:CpuFreqHist.Clear()
+        $script:HistTime.Clear(); $script:CpuHistTime.Clear()
+        $script:RestoredCount = 0
+        $script:SessionGapMin = 0
+        $script:GpuHover = -1; $script:CpuHover = -1
+        Draw-Chart
+        $lblHint.Text = $script:T.ClearChartDone
+    } catch {}
+})
+
+$miClearAll.Add_Click({
+    $ans = [System.Windows.Forms.MessageBox]::Show($script:T.ClearAsk, $script:T.AppTitle, 'YesNo', 'Warning')
+    if ($ans -ne 'Yes') { return }
+    try {
+        if ($script:Recording) { Stop-Logging }
+        foreach ($sub in @('logs', 'reports')) {
+            $path = Join-Path $Root $sub
+            if (Test-Path $path) {
+                Get-ChildItem $path -Recurse -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+        }
+        $script:TempHist.Clear(); $script:PowerHist.Clear()
+        $script:CpuTempHist.Clear(); $script:CpuFreqHist.Clear()
+        $script:HistTime.Clear(); $script:CpuHistTime.Clear()
+        $script:RestoredCount = 0
+        $script:SessionGapMin = 0
+        $script:LogCount = 0
+        $script:ReportCount = 0
+        Start-Logging 'system'
+        Draw-Chart
+        $lblHint.Text = $script:T.ClearDone
+    } catch {}
+})
 $miDxStatus = $script:MainMenu.Items.Add($script:T.DxChecking)
 $miDxStatus.Enabled = $false
 $miDxFix = $script:MainMenu.Items.Add($script:T.DxView)
