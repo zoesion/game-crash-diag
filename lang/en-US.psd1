@@ -77,4 +77,11 @@
 
     DiagTitle   = 'Diagnosis - GameCrashDiag'
     AboutTitle  = 'About GameCrashDiag'
-}
+    StatsThis    = ' (this session)'
+    ThrottleGpu  = 'GPU throttle'
+    PStateFull   = 'P0 full speed'
+    PStateMid    = '{0} medium load'
+    PStateIdle   = '{0} idle'
+    PStateDeep   = '{0} deep idle'
+    GapLabel     = '{0} gap'
+    RestoredHint = ' ({0} restored)'}

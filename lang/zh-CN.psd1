@@ -77,4 +77,11 @@
 
     DiagTitle   = '诊断报告 - 游戏崩溃诊断器'
     AboutTitle  = '关于 游戏崩溃诊断器'
-}
+    StatsThis    = '（本次）'
+    ThrottleGpu  = 'GPU降频'
+    PStateFull   = 'P0 满速'
+    PStateMid    = '{0} 中负载'
+    PStateIdle   = '{0} 待机省电'
+    PStateDeep   = '{0} 深度待机'
+    GapLabel     = '隔 {0}'
+    RestoredHint = '（接上次 {0} 点）'}

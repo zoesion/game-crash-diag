@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.83'
+$script:AppVersion = 'v5.84'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1237,7 +1237,7 @@ function Draw-SessionMarker($bmp, $from, $cnt) {
 
         # 在分界线旁标注间隔时长
         if ($script:SessionGapMin -ge 1) {
-            $gapTxt = if ($script:SessionGapMin -ge 60) { '隔 {0:0.#} 小时' -f ($script:SessionGapMin / 60.0) } else { '隔 {0} 分钟' -f $script:SessionGapMin }
+            $gapTxt = if ($script:SessionGapMin -ge 60) { $script:T.GapLabel -f ('{0:0.#} h' -f ($script:SessionGapMin / 60.0)) } else { $script:T.GapLabel -f ('{0} min' -f $script:SessionGapMin) }
             $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(160, 170, 170, 190))
             $font = New-Object System.Drawing.Font('微软雅黑', 7)
             $sz = $g.MeasureString($gapTxt, $font)
@@ -1381,13 +1381,13 @@ function Update-UI {
         "{0}%  {1:N1}G/{2:N0}G" -f $cpu.RamPct, $usedGB, $totalGB
     } else { "--" }
     $pstateTxt = switch -Regex ($s.PState) {
-        '^P0$' { 'P0 满速' }
-        '^P[1-3]$' { "$($s.PState) 中负载" }
-        '^P[4-9]$' { "$($s.PState) 待机省电" }
-        '^P1[0-5]$' { "$($s.PState) 深度待机" }
+        '^P0$' { $script:T.PStateFull }
+        '^P[1-3]$' { $script:T.PStateMid -f $s.PState }
+        '^P[4-9]$' { $script:T.PStateIdle -f $s.PState }
+        '^P1[0-5]$' { $script:T.PStateDeep -f $s.PState }
         default { "$($s.PState)" }
     }
-    $lblDetail.Text = ("{0} {1:N0} / {2} MB      {3} {4}      GPU降频 {5}      {6} {7}" -f $script:T.RowVram, [double]$s.MemUsed, $memTotal, $script:T.RowSysMem, $ramTxt, $s.Throttle, $script:T.RowPower, $pstateTxt)
+    $lblDetail.Text = ("{0} {1:N0} / {2} MB      {3} {4}      {5} {6}      {7} {8}" -f $script:T.RowVram, [double]$s.MemUsed, $memTotal, $script:T.RowSysMem, $ramTxt, $script:T.ThrottleGpu, $s.Throttle, $script:T.RowPower, $pstateTxt)
 
     # 记录
     if ($script:Recording) {
@@ -1514,7 +1514,7 @@ $script:GameScanResult = $null
         $script:BtnRestore = $null
     }
 
-    $lblStats.Text = ("{0} {1:N0}（本次）    {2} {3}    {4} {5}" -f $script:T.RowLogCount, [int]$script:LogCount, $script:T.RowReports, [int]$script:ReportCount, $script:T.RowFile, $(if ($script:LogFile) { Split-Path $script:LogFile -Leaf } else { "-" }))
+    $lblStats.Text = ("{0} {1:N0}{2}    {3} {4}    {5} {6}" -f $script:T.RowLogCount, [int]$script:LogCount, $script:T.StatsThis, $script:T.RowReports, [int]$script:ReportCount, $script:T.RowFile, $(if ($script:LogFile) { Split-Path $script:LogFile -Leaf } else { "-" }))
 }
 
 # ════════════════════════════════ 鼠标悬停提示 ════════════════════════════════
@@ -1647,7 +1647,7 @@ $form.Add_Shown({
             $script:SessionGapMin = [int][math]::Round(((Get-Date) - $script:RestoreLastTime).TotalMinutes)
         }
         $lblHint.Text = $script:T.HintNoGame
-        if ($script:RestoredCount -gt 0) { $lblHint.Text += "  (已接上上次的 $($script:RestoredCount) 个采样)" }
+        if ($script:RestoredCount -gt 0) { $lblHint.Text += ($script:T.RestoredHint -f $script:RestoredCount) }
     }
     Update-UI
 })
