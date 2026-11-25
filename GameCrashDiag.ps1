@@ -68,7 +68,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.73'
+$script:AppVersion = 'v5.74'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -848,6 +848,50 @@ $script:CpuFreqHist = New-Object 'System.Collections.Generic.List[double]'
 $script:LastCpuTemp = 0.0
 $script:LastCpuFreq = 0.0
 
+function Restore-HistoryFromLastLog {
+    <# 重启后把上一次记录的最后一段接回曲线，避免一开机就是空白 #>
+    param([int]$MaxPoints = 1200)
+    try {
+        $last = Get-ChildItem $LogDir -Recurse -Filter '*.csv' -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $last) { return 0 }
+        if (((Get-Date) - $last.LastWriteTime).TotalDays -gt 7) { return 0 }
+
+        # 文件名形如 sys-20261125-185640.csv，从中取日期
+        $day = $null
+        $m = [regex]::Match($last.BaseName, '(\d{8})-\d{6}')
+        if ($m.Success) {
+            try { $day = [datetime]::ParseExact($m.Groups[1].Value, 'yyyyMMdd', $null) } catch {}
+        }
+        if (-not $day) { $day = $last.LastWriteTime.Date }
+
+        $rows = @(Get-Content $last.FullName -Tail ($MaxPoints + 1) -ErrorAction SilentlyContinue | Select-Object -Skip 1)
+        $added = 0
+        foreach ($row in $rows) {
+            $a = $row -split ','
+            if ($a.Count -lt 19) { continue }
+            $t = $null
+            try { $t = [datetime]::ParseExact($a[0], 'HH:mm:ss', $null) } catch { continue }
+            $dt = $day.AddHours($t.Hour).AddMinutes($t.Minute).AddSeconds($t.Second)
+            if ($dt -gt (Get-Date)) { $dt = $dt.AddDays(-1) }
+            $tv = 0.0; $pv = 0.0; $cv = 0.0; $fv = 0.0
+            if (-not [double]::TryParse($a[1], [ref]$tv)) { continue }
+            [void][double]::TryParse($a[2], [ref]$pv)
+            [void][double]::TryParse($a[14], [ref]$cv)
+            [void][double]::TryParse($a[15], [ref]$fv)
+            [void]$script:HistTime.Add($dt)
+            [void]$script:TempHist.Add($tv)
+            [void]$script:PowerHist.Add($pv)
+            [void]$script:CpuHistTime.Add($dt)
+            [void]$script:CpuTempHist.Add($cv)
+            [void]$script:CpuFreqHist.Add($fv)
+            $added++
+        }
+        return $added
+    }
+    catch { return 0 }
+}
+
 function Start-Logging([string]$Category = 'system') {
     $sub = Join-Path $LogDir $Category
     if (-not (Test-Path $sub)) { New-Item -ItemType Directory -Force -Path $sub | Out-Null }
@@ -1542,10 +1586,15 @@ $form.Add_Shown({
         $miAuto.Checked = Test-AutoStart
         $script:AutoStartInit = $true
     } catch { $script:AutoStartInit = $true }
+    # 重启后把上次记录的最后一段接回曲线
+    try {
+        $restored = Restore-HistoryFromLastLog
+        if ($restored -gt 0) { $script:RestoredCount = $restored }
+    } catch {}
     $hasGame = $null -ne (Find-RunningGame)
     if (-not $hasGame -and -not $script:Recording) {
-        Start-Logging 'system'
         $lblHint.Text = $script:T.HintNoGame
+        if ($script:RestoredCount -gt 0) { $lblHint.Text += "  (已接上上次的 $($script:RestoredCount) 个采样)" }
     }
     Update-UI
 })
