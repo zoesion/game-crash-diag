@@ -73,7 +73,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.96'
+$script:AppVersion = 'v5.97'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1704,20 +1704,27 @@ function Draw-Chart {
     if ($null -eq $script:TempHist -or $script:TempHist.Count -lt 1) { return }
     if (-not (Ensure-ChartBitmaps)) { return }
 
-    # 自愈：四条曲线必须等长。若 CPU 列表比 GPU 长（历史遗留），
-    # 从头部裁掉多出来的旧点，否则 CPU 曲线会被切到旧数据上。
+    # 自愈：六条曲线长度必须一致。GPU/CPU 各自成对，任何一条短了都会让渲染器越界
     try {
-        $diff = $script:CpuTempHist.Count - $script:TempHist.Count
-        if ($diff -gt 0) {
-            $script:CpuTempHist.RemoveRange(0, [math]::Min($diff, $script:CpuTempHist.Count))
-            if ($script:CpuFreqHist.Count -ge $diff) { $script:CpuFreqHist.RemoveRange(0, $diff) }
-            if ($script:CpuHistTime.Count -ge $diff) { $script:CpuHistTime.RemoveRange(0, $diff) }
+        # GPU 两条对齐
+        $dPow = $script:PowerHist.Count - $script:TempHist.Count
+        if ($dPow -gt 0) { $script:PowerHist.RemoveRange(0, [math]::Min($dPow, $script:PowerHist.Count)) }
+        elseif ($dPow -lt 0 -and $script:PowerHist.Count -gt 0) {
+            $fillP = [double]($script:PowerHist[$script:PowerHist.Count - 1])
+            for ($q = 0; $q -lt (-$dPow); $q++) { [void]$script:PowerHist.Insert(0, $fillP) }
         }
-        elseif ($diff -lt 0) {
-            $need = -$diff
-            if ($script:CpuFreqHist.Count -ge $script:CpuTempHist.Count) {
+        # CPU 三条对齐到 CPU 温度条数
+        $dTemp = $script:CpuTempHist.Count - $script:TempHist.Count
+        if ($dTemp -gt 0) {
+            $script:CpuTempHist.RemoveRange(0, [math]::Min($dTemp, $script:CpuTempHist.Count))
+            if ($script:CpuFreqHist.Count -ge $dTemp) { $script:CpuFreqHist.RemoveRange(0, $dTemp) }
+            if ($script:CpuHistTime.Count -ge $dTemp) { $script:CpuHistTime.RemoveRange(0, $dTemp) }
+        }
+        elseif ($dTemp -lt 0) {
+            $need = -$dTemp
+            if ($script:CpuTempHist.Count -gt 0) {
                 $fill = [double]($script:CpuTempHist[$script:CpuTempHist.Count - 1])
-                $fillF = [double]($script:CpuFreqHist[$script:CpuFreqHist.Count - 1])
+                $fillF = if ($script:CpuFreqHist.Count -gt 0) { [double]($script:CpuFreqHist[$script:CpuFreqHist.Count - 1]) } else { 0.0 }
                 for ($q = 0; $q -lt $need; $q++) {
                     [void]$script:CpuTempHist.Insert(0, $fill)
                     [void]$script:CpuFreqHist.Insert(0, $fillF)
@@ -1725,7 +1732,16 @@ function Draw-Chart {
                 }
             }
         }
-    } catch {}
+        # 频率曲线补齐到温度条数（这条以前没检查，是崩溃的直接原因）
+        $dFreq = $script:CpuTempHist.Count - $script:CpuFreqHist.Count
+        if ($dFreq -gt 0 -and $script:CpuFreqHist.Count -gt 0) {
+            $fillF2 = [double]($script:CpuFreqHist[$script:CpuFreqHist.Count - 1])
+            for ($q = 0; $q -lt $dFreq; $q++) { [void]$script:CpuFreqHist.Insert(0, $fillF2) }
+        }
+        elseif ($dFreq -lt 0) {
+            $script:CpuFreqHist.RemoveRange(0, [math]::Min(-$dFreq, $script:CpuFreqHist.Count))
+        }
+    } catch { }
 
     $secPerPt = $script:IntervalMs / 1000.0
     $r = Get-ViewRange
@@ -1745,37 +1761,39 @@ function Draw-Chart {
 
     $aGpu = Get-Slice $script:TempHist $r
     $bGpu = Get-Slice $script:PowerHist $r
-    if ($aGpu.Count -ge 1) {
+    # 两条曲线长度必须一致，渲染器按同一个 count 取下标，短了就越界
+    $nGpu = [math]::Min($aGpu.Count, $bGpu.Count)
+    if ($nGpu -ge 1) {
         # 图例文字直接带上最高/最低（颜色由渲染器按曲线色绘制）
         $mnA = ($aGpu | Measure-Object -Minimum).Minimum
         $mxA = ($aGpu | Measure-Object -Maximum).Maximum
         $mnB = ($bGpu | Measure-Object -Minimum).Minimum
         $mxB = ($bGpu | Measure-Object -Maximum).Maximum
         $hvg = -1
-        if ($script:GpuHover -ge 0) { $hl = $script:GpuHover - $r.From; if ($hl -ge 0 -and $hl -lt $cnt) { $hvg = $hl } }
+        if ($script:GpuHover -ge 0) { $hl = $script:GpuHover - $r.From; if ($hl -ge 0 -and $hl -lt $nGpu) { $hvg = $hl } }
         if ($script:HasNvidia) {
             $labA = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendGpuTemp, $script:T.StatMax, $mxA, $script:T.StatMin, $mnA)
             $labB = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendPower, $script:T.StatMax, $mxB, $script:T.StatMin, $mnB)
-            [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
+            [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $nGpu,
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 $labA, $labB, '°C', 'W', $hvg)
         }
         else {
             $labA = 'GPU 占用 %   最高 {0:N0}  最低 {1:N0}' -f $mxA, $mnA
             $labB = '显存 MB   最高 {0:N0}  最低 {1:N0}' -f $mxB, $mnB
-            [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $aGpu.Count,
+            [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $nGpu,
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 $labA, $labB, '%', 'MB', $hvg)
         }
-        Draw-SessionMarker $script:chartBmp $r.From $cnt
+        Draw-SessionMarker $script:chartBmp $r.From $nGpu
         $chart.Refresh()
     }
 
     if ($script:CpuTempHist.Count -ge 1) {
         $aCpu = Get-Slice $script:CpuTempHist $r
         $bCpu = Get-Slice $script:CpuFreqHist $r
-        if ($aCpu.Count -ge 1) {
-            $cCnt = $aCpu.Count
+        $cCnt = [math]::Min($aCpu.Count, $bCpu.Count)
+        if ($cCnt -ge 1) {
             $cSpan = [math]::Round($cCnt * $secPerPt / 60.0, 1)
             $cInfo = (("{0} · {1} · {2}" -f ($script:T.ChartPerPoint -f $secPerPt), ($script:T.ChartPoints -f $cCnt), ($script:T.ChartMinutes -f $cSpan)))
             if ($r.Shift -gt 0 -and $script:CpuHistTime.Count -gt 0) {
