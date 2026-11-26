@@ -100,4 +100,6 @@
     LoadOlderHint = '已从 logs 载入 {0} 个点（约 {1} 小时）'
     LoadOlderNone = '没有更早的记录可载入了'
     LoadOlderCap = '已到 24 小时上限，更早的数据不再载入'
+    HintPaused = '已暂停：向上拖动滚动条回到最新，或点 ☰ 载入更早的记录'
+    HintLive   = '跟随最新（拖动滚动条可回看）'
 }
