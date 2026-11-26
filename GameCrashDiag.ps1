@@ -30,6 +30,7 @@ param(
     [switch]$TestClear,
     [switch]$TestGameStart,
     [switch]$TestMarkerShot,
+    [switch]$TestRestore,
     [string]$MarkerShotPath = '',
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
@@ -72,7 +73,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.91'
+$script:AppVersion = 'v5.92'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -954,6 +955,142 @@ $script:CpuFreqHist = New-Object 'System.Collections.Generic.List[double]'
 $script:LastCpuTemp = 0.0
 $script:LastCpuFreq = 0.0
 
+function Get-HistStorePath {
+    $dir = Join-Path $Root 'data\history'
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    return (Join-Path $dir 'samples.csv')
+}
+
+function Get-MarkerStorePath {
+    $dir = Join-Path $Root 'data\history'
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    return (Join-Path $dir 'markers.csv')
+}
+
+function Save-MarkersToDisk {
+    <# 把事件标记落盘，重启后仍能看到崩溃/宕机竖线 #>
+    try {
+        $path = Get-MarkerStorePath
+        $lines = New-Object System.Collections.Generic.List[string]
+        foreach ($m in $script:Markers) {
+            $lines.Add(('{0:o}|{1}' -f $m.Time, $m.Kind))
+        }
+        [System.IO.File]::WriteAllLines($path, $lines, (New-Object System.Text.UTF8Encoding($false)))
+    } catch {}
+}
+
+function Load-MarkersFromDisk {
+    <# 只取 24 小时内的标记 #>
+    try {
+        $path = Get-MarkerStorePath
+        if (-not (Test-Path $path)) { return }
+        $cut = (Get-Date).AddHours(-24)
+        foreach ($line in [System.IO.File]::ReadAllLines($path)) {
+            $p = $line -split '\|'
+            if ($p.Count -lt 2) { continue }
+            $t = $null
+            try { $t = [datetime]::Parse($p[0], $null, [System.Globalization.DateTimeStyles]::RoundtripKind) } catch { continue }
+            if ($t -lt $cut) { continue }
+            [void]$script:Markers.Add([pscustomobject]@{ Kind = $p[1]; Time = $t })
+        }
+    } catch {}
+}
+
+function Write-HistSample([datetime]$time, $gpuT, $gpuW, $gpuClk, $util, $vram, $cpuT, $cpuClk, $cpuLoad, $active, $total, $ram) {
+    <# 追加一行到 data\history\samples.csv，用于重启后接续 6 小时曲线 #>
+    try {
+        if (-not $script:HistWriter) {
+            $script:HistWriter = New-Object System.IO.StreamWriter((Get-HistStorePath), $true, (New-Object System.Text.UTF8Encoding($false)))
+            $script:HistWriter.AutoFlush = $true
+            $script:HistWriteCount = 0
+        }
+        $fmt = '{0:yyyy-MM-dd HH:mm:ss}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}|{11}'
+        $script:HistWriter.WriteLine(($fmt -f $time,
+            $(if ($null -ne $gpuT) { [math]::Round([double]$gpuT, 1) } else { '' }),
+            $(if ($null -ne $gpuW) { [math]::Round([double]$gpuW, 1) } else { '' }),
+            $(if ($null -ne $gpuClk) { [int]$gpuClk } else { '' }),
+            $(if ($null -ne $util) { [int]$util } else { '' }),
+            $(if ($null -ne $vram) { [int]$vram } else { '' }),
+            $(if ($null -ne $cpuT) { [math]::Round([double]$cpuT, 1) } else { '' }),
+            $(if ($null -ne $cpuClk) { [int]$cpuClk } else { '' }),
+            $(if ($null -ne $cpuLoad) { [int]$cpuLoad } else { '' }),
+            $(if ($null -ne $active) { [int]$active } else { '' }),
+            $(if ($null -ne $total) { [int]$total } else { '' }),
+            $(if ($null -ne $ram) { [int]$ram } else { '' })))
+        $script:HistWriteCount++
+
+        # 每 5 分钟检查一次文件体积，超过上限就压缩成最近 6 小时
+        if ($script:HistWriteCount % 600 -eq 0) { Compress-HistStore }
+    } catch {}
+}
+
+function Compress-HistStore {
+    <# 只保留最近 6 小时的采样，防止文件无限增长 #>
+    try {
+        $path = Get-HistStorePath
+        if (-not (Test-Path $path)) { return }
+        if ((Get-Item $path).Length -lt 8MB) { return }
+        if ($script:HistWriter) { $script:HistWriter.Flush() }
+
+        $cut = (Get-Date).AddHours(-6)
+        $keep = New-Object System.Collections.Generic.List[string]
+        foreach ($line in [System.IO.File]::ReadAllLines($path)) {
+            $p = $line -split '\|'
+            if ($p.Count -lt 2) { continue }
+            $t = $null
+            try { $t = [datetime]::ParseExact($p[0], 'yyyy-MM-dd HH:mm:ss', $null) } catch { continue }
+            if ($t -ge $cut) { $keep.Add($line) }
+        }
+        if ($script:HistWriter) { $script:HistWriter.Close(); $script:HistWriter = $null }
+        [System.IO.File]::WriteAllLines($path, $keep, (New-Object System.Text.UTF8Encoding($false)))
+    } catch {}
+}
+
+function Restore-HistoryFromStore {
+    <# 启动时从 data\history\samples.csv 读回最近 6 小时，接上曲线 #>
+    try {
+        $path = Get-HistStorePath
+        if (-not (Test-Path $path)) { return 0 }
+        $cut = (Get-Date).AddHours(-6)
+        $rows = New-Object System.Collections.Generic.List[object]
+        foreach ($line in [System.IO.File]::ReadAllLines($path)) {
+            $p = $line -split '\|'
+            if ($p.Count -lt 12) { continue }
+            $t = $null
+            try { $t = [datetime]::ParseExact($p[0], 'yyyy-MM-dd HH:mm:ss', $null) } catch { continue }
+            if ($t -lt $cut) { continue }
+            $rows.Add($p)
+        }
+        if ($rows.Count -eq 0) { return 0 }
+        # 只保留最后 MaxPoints 个点
+        $skip = [math]::Max(0, $rows.Count - $script:MaxPoints)
+        $added = 0
+        for ($i = $skip; $i -lt $rows.Count; $i++) {
+            $p = $rows[$i]
+            $t = [datetime]::ParseExact($p[0], 'yyyy-MM-dd HH:mm:ss', $null)
+            $gt = 0.0; $gw = 0.0; $gc = 0.0; $gu = 0.0; $gv = 0.0
+            $ct = 0.0; $cf = 0.0; $cl = 0.0; $ca = 0.0
+            [void][double]::TryParse($p[1], [ref]$gt)
+            [void][double]::TryParse($p[2], [ref]$gw)
+            [void][double]::TryParse($p[3], [ref]$gc)
+            [void][double]::TryParse($p[4], [ref]$gu)
+            [void][double]::TryParse($p[5], [ref]$gv)
+            [void][double]::TryParse($p[6], [ref]$ct)
+            [void][double]::TryParse($p[7], [ref]$cf)
+            [void][double]::TryParse($p[8], [ref]$cl)
+            [void][double]::TryParse($p[9], [ref]$ca)
+            [void]$script:HistTime.Add($t)
+            [void]$script:TempHist.Add($gt)
+            [void]$script:PowerHist.Add($gw)
+            [void]$script:CpuHistTime.Add($t)
+            [void]$script:CpuTempHist.Add($ct)
+            [void]$script:CpuFreqHist.Add($cf)
+            $script:RestoreLastTime = $t
+            $added++
+        }
+        return $added
+    } catch { return 0 }
+}
 function Restore-HistoryFromLastLog {
     <# 重启后把上一次记录的最后一段接回曲线，避免一开机就是空白 #>
     param([int]$MaxPoints = 1200)
@@ -1376,6 +1513,7 @@ function Add-Marker([string]$kind, $time) {
         if (-not $script:Markers) { $script:Markers = New-Object 'System.Collections.Generic.List[object]' }
         [void]$script:Markers.Add([pscustomobject]@{ Kind = $kind; Time = [datetime]$time })
         while ($script:Markers.Count -gt 30) { $script:Markers.RemoveAt(0) }
+        Save-MarkersToDisk
     } catch { }
 }
 
@@ -1650,6 +1788,10 @@ function Update-UI {
     [void]$script:CpuHistTime.Add((Get-Date))
     [void]$script:CpuTempHist.Add([double]$script:LastCpuTemp)
     [void]$script:CpuFreqHist.Add([double]$script:LastCpuFreq)
+    # 落盘：重启后能从 data\history\samples.csv 接回 6 小时曲线
+    try {
+        Write-HistSample (Get-Date) $s.Temp $s.Power $s.ClockSm $s.UtilGpu $s.MemUsed $script:LastCpuTemp $script:LastCpuFreq $cpu.Load $cpu.Active $cpu.Total $cpu.RamPct
+    } catch {}
     if ($script:CpuTempHist.Count -gt ($script:MaxPoints + 600)) {
         $cdrop = $script:CpuTempHist.Count - $script:MaxPoints
         $script:CpuTempHist.RemoveRange(0, $cdrop)
@@ -1868,7 +2010,12 @@ $form.Add_Shown({
     if (-not $hasGame -and -not $script:Recording) {
         Start-Logging 'system'
         # 接上上次的曲线：Start-Logging 会清空缓冲，必须放在它之后
-        try { $script:RestoredCount = Restore-HistoryFromLastLog } catch { $script:RestoredCount = 0 }
+        # 优先用 data\history\samples.csv（完整 6 小时），没有才退回读 CSV 尾部
+        try { $script:RestoredCount = Restore-HistoryFromStore } catch { $script:RestoredCount = 0 }
+        if ($script:RestoredCount -lt 2) {
+            try { $script:RestoredCount = Restore-HistoryFromLastLog } catch { $script:RestoredCount = 0 }
+        }
+        try { Load-MarkersFromDisk } catch { }
         if ($script:RestoredCount -gt 0 -and $script:RestoreLastTime) {
             $script:SessionGapMin = [int][math]::Round(((Get-Date) - $script:RestoreLastTime).TotalMinutes)
             # 上次是正常关机、还是死机/蓝屏/断电？查事件日志判断
@@ -1879,7 +2026,10 @@ $form.Add_Shown({
                        Select-Object -First 1
                 if ($bad) { $kind = 'down' }
             } catch { }
-            Add-Marker $kind $script:RestoreLastTime
+            # 5 分钟内已有中断标记就不重复画
+            $dup = $false
+            foreach ($mk in $script:Markers) { if ([math]::Abs(($mk.Time - $script:RestoreLastTime).TotalMinutes) -lt 5) { $dup = $true; break } }
+            if (-not $dup) { Add-Marker $kind $script:RestoreLastTime }
             if ($kind -eq 'down') { $script:LastShutdownWasBad = $true }
         }
         $lblHint.Text = $script:T.HintNoGame
@@ -1897,6 +2047,9 @@ $form.Add_FormClosing({
     if ($script:ExitFlag) {
         $script:Timer.Stop()
         if ($script:Recording) { Stop-Logging }
+        # 收尾：把采样落盘句柄关掉，顺手压缩一次历史文件
+        try { if ($script:HistWriter) { $script:HistWriter.Flush(); $script:HistWriter.Close(); $script:HistWriter = $null } } catch {}
+        try { Save-MarkersToDisk } catch {}
     }
 })
 
@@ -2004,7 +2157,8 @@ if ($UiTest) {
     Write-Output "  CPU卡片: $($valCpuTemp.Text)   曲线末值: $($script:CpuTempHist[$script:CpuTempHist.Count-1])"
     Write-Output "  数据源: HasNvidia=$($script:HasNvidia)  HasLhm=$($script:HasLhm)  LhmError=$($script:LhmError)"
     Write-Output "  状态行: $($lblDetail.Text)"
-    Write-Output "  GPU曲线: $($script:TempHist.Count) 点   CPU曲线: $($script:CpuTempHist.Count) 点"
+    Write-Output "  GPU曲线: $($script:TempHist.Count) 点   CPU曲线: $($script:CpuTempHist.Count) 点   恢复=$($script:RestoredCount)"
+    Write-Output "  历史文件: $(Get-HistStorePath)  存在=$(Test-Path (Get-HistStorePath))"
     Write-Output "  记录中: $($script:Recording)   条数: $($script:LogCount)"
     Write-Output "  日志文件: $($script:LogFile)"
     $form.Dispose()
@@ -3227,6 +3381,23 @@ if ($ShowAbout -or $ShowDiagnosis) {
     if ($ShowAbout) { Show-AboutDialog } else { Show-DiagnosisWindow }
     exit 0
 }
+if ($TestRestore) {
+    # 验证：从 data\history\samples.csv 接回 6 小时曲线
+    $path = Get-HistStorePath
+    Write-Output ("历史文件: " + $path + "  存在=" + (Test-Path $path))
+    if (Test-Path $path) {
+        $all = [System.IO.File]::ReadAllLines($path)
+        Write-Output ("文件行数: " + $all.Count)
+        if ($all.Count -gt 0) { Write-Output ("首行: " + $all[0]); Write-Output ("末行: " + $all[-1]) }
+    }
+    $n = Restore-HistoryFromStore
+    Write-Output ("恢复点数: " + $n + "  曲线点数: " + $script:TempHist.Count)
+    Load-MarkersFromDisk
+    Write-Output ("标记数: " + $script:Markers.Count)
+    if ($script:TempHist.Count -ge 2) { Draw-Chart; Write-Output "绘制完成（无异常）" }
+    exit 0
+}
+
 if ($TestMarkerShot) {
     # 画出三种标记，存成图片用于核对
     $bmp = New-Object System.Drawing.Bitmap(900, 160)
