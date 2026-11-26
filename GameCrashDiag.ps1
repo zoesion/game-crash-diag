@@ -73,7 +73,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.94'
+$script:AppVersion = 'v5.95'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -1589,26 +1589,14 @@ function Shift-View([int]$delta) {
     <# 正值 = 往更早的数据翻（像往左拖） #>
     $r = Get-ViewRange
     $step = [math]::Max(1, [int]($r.Span / 4))
-    $before = [int]$script:ViewShiftPts
-    $script:ViewShiftPts = [math]::Max(0, [math]::Min($script:TempHist.Count - $r.Span, $script:ViewShiftPts + $delta * $step))
-    # 已经翻到最左边还想往左？自动从 logs 里再载入 6 小时
-    $atLeftEdge = ($script:ViewShiftPts -ge ($script:TempHist.Count - $r.Span) - 1)
-    if ($delta -gt 0 -and $atLeftEdge -and -not $script:LoadingOlder) {
-        $script:LoadingOlder = $true
-        try {
-            $added = Load-OlderHistory 6
-            if ($added -gt 0) {
-                $script:ViewShiftPts = [int]$script:ViewShiftPts + $added
-                $lblHint.Text = $script:T.LoadOlderHint -f $added, [math]::Round((Get-LoadedHours), 1)
-                $lblHint.ForeColor = $C.Accent
-            } elseif ($script:LoadOlderStatus -eq 'cap') {
-                $lblHint.Text = $script:T.LoadOlderCap
-                $lblHint.ForeColor = $C.Warn
-            } elseif ($script:LoadOlderStatus -eq 'none') {
-                $lblHint.Text = $script:T.LoadOlderNone
-                $lblHint.ForeColor = $C.Dim
-            }
-        } catch {} finally { $script:LoadingOlder = $false }
+    $maxShift = [math]::Max(0, $script:TempHist.Count - $r.Span)
+    $script:ViewShiftPts = [math]::Max(0, [math]::Min($maxShift, $script:ViewShiftPts + $delta * $step))
+    # 拖动/滚轮只负责平移，不再自动去 logs 里载入；
+    # 载入历史改成显式操作（菜单 ☰ → 载入更早的记录），免得一滚就被暂停
+    $script:FollowLive = ($script:ViewShiftPts -le 0)
+    if (-not $script:FollowLive) {
+        $lblHint.Text = $script:T.HintPaused
+        $lblHint.ForeColor = $C.Dim
     }
     $script:GpuHover = -1
     $script:CpuHover = -1

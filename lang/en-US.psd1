@@ -100,4 +100,6 @@
     LoadOlderHint = 'Loaded {0} points (~{1} h) from logs'
     LoadOlderNone = 'No older records left'
     LoadOlderCap = '24 hour limit reached, older data is not loaded'
+    HintPaused = 'Paused - drag the scrollbar back to the latest, or use the menu to load older data'
+    HintLive   = 'Following live (drag the scrollbar to look back)'
 }
