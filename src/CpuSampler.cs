@@ -90,7 +90,7 @@ public sealed class CpuSampler : IDisposable
             catch { }
         }
         // v5 的口径：线程数 + 1（把 _Total 也计入），保持一致便于对比
-        totalCores = TotalThreads > 0 ? TotalThreads + 1 : _cores.Length;
+        totalCores = Environment.ProcessorCount + 1;   // v5 口径：线程数 + 1
         if (active < 1) active = 1;
         activeCores = active;
 

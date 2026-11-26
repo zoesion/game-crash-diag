@@ -18,6 +18,8 @@ $argLine = @(
     '/reference:System.Drawing.dll',
     '/reference:System.Windows.Forms.dll',
     '/reference:System.Management.dll',
+    '/reference:"D:\Program Files\GameCrashDiag6\thirdparty\lhm\LibreHardwareMonitorLib.dll"',
+    '/reference:"D:\Program Files\GameCrashDiag6\thirdparty\lhm\HidSharp.dll"',
     $files
 ) -join ' '
 
