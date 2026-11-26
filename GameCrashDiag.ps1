@@ -72,7 +72,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.90'
+$script:AppVersion = 'v5.91'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -251,10 +251,22 @@ $script:ExcludeProcs = @(
     'gameoverlayui', 'gameoverlayui64', 'steamwebhelper', 'steam',
     'RTSS', 'RTSSHooksLoader64', 'MSIAfterburner', 'RivaTuner Statistics Server',
     'wallpaper64', 'wallpaper32', 'wallpaper32', 'RazerAppEngine', 'RzSDKServer',
-    'RzChromaStreamServer', 'SyserrorOverlay', 'TranslucentTB', 'Rainmeter'
+    'RzChromaStreamServer', 'SyserrorOverlay', 'TranslucentTB', 'Rainmeter',
+    # 全屏但不是游戏的应用（实测误报过）
+    'ollama', 'ollama app', 'ollama_llama_server', 'SnippingTool', 'ScreenClippingHost',
+    'QQMusic', 'QQMusicMini', 'cloudmusic', 'NeteaseCloudMusic', 'KuGou', 'PotPlayerMini64',
+    'vlc', 'mpc-hc64', 'mpv', 'obs64', 'OBS', 'Zoom', 'WeChat', 'WeChatAppEx', 'QQ',
+    'Photos', 'PhotosApp', 'mspaint', 'Notepad', 'notepad++', 'WINWORD', 'EXCEL', 'POWERPNT',
+    'Acrobat', 'AcroRd32', 'SumatraPDF', 'BaiduNetdisk', 'Thunder', 'IDMan',
+    'Pixso', 'Figma', 'Photoshop', 'Illustrator', 'AfterFX', 'Premiere Pro',
+    'Obsidian', 'Notion', 'Typora', 'wmplayer', 'MusicBee', 'foobar2000',
+    # 游戏平台客户端（本身不是游戏）
+    'EpicGamesLauncher', 'Battle.net', 'Origin', 'EA Desktop', 'EAapp', 'UbisoftConnect',
+    'GalaxyClient', 'RiotClientServices', 'WeGame', 'wegame', 'Steam', 'steamwebhelper'
 )
 # 这些路径下的进程一律不当游戏（叠加层/启动器/系统组件）
-$script:ExcludePaths = @('\Windows\', '\NVIDIA Corporation\', '\Steam\bin\', '\Razer\', '\ProgramData\Microsoft\Windows Defender\')
+$script:ExcludePaths = @('\Windows\', '\NVIDIA Corporation\', '\Steam\bin\', '\Razer\', '\ProgramData\Microsoft\Windows Defender\',
+                        '\Program Files\WindowsApps\', '\AppData\Local\Programs\ollama\', '\AppData\Local\Ollama\')
 $script:GameName = $null
 $script:GameScanAt = $null
 $script:GameScanResult = $null
@@ -291,7 +303,10 @@ function Find-RunningGame {
     }
     if ($candidates.Count -eq 0) { return $null }
     # 多个全屏进程时，取内存占用最大的（游戏通常 GB 级，工具类只有几十 MB）
-    return ($candidates | Sort-Object Mem -Descending | Select-Object -First 1).Proc
+    # 但低于 400MB 的一律不算游戏：音乐播放器、截图工具这类也会全屏
+    $best = $candidates | Sort-Object Mem -Descending | Select-Object -First 1
+    if ($best.Mem -lt 400MB) { return $null }
+    return $best.Proc
 }
 # ── CPU 采样：全部走 .NET 性能计数器（单次 <1ms，不再阻塞界面）──
 $script:PcPerf = New-Object System.Diagnostics.PerformanceCounter('Processor Information', '% Processor Performance', '_Total')
@@ -1056,7 +1071,7 @@ function Stop-Logging {
     $lblStatus.ForeColor = $C.Dim
 }
 
-function Test-IsCrash($exitTime) {
+function Test-IsCrash($exitTime, $procName = '') {
     # 判断这次退出到底是崩溃还是正常关闭：三选一命中就算崩溃
     $since = $exitTime.AddMinutes(-2)
     $docDir = [Environment]::GetFolderPath('MyDocuments')
@@ -1066,14 +1081,19 @@ function Test-IsCrash($exitTime) {
                    Where-Object { $_.LastWriteTime -ge $since }
         if ($newDump) { return @{ IsCrash = $true; Reason = "产生崩溃转储 $($newDump[-1].Name)" } }
     }
+    # 应用错误事件：按退出进程名匹配（以前只认 bf6，其它游戏会漏判）
     try {
+        $pat = if ($procName) { [regex]::Escape($procName) } else { 'bf6' }
         $appErr = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $since } -ErrorAction Stop |
-                  Where-Object { $_.Message -match 'bf6' }
+                  Where-Object { $_.Message -match $pat }
         if ($appErr) { return @{ IsCrash = $true; Reason = '应用错误事件 1000' } }
     } catch {}
+    # 显卡驱动错误：只在「错误/严重」级别、且离退出时间很近时才算，
+    # 否则一次普通驱动警告会让所有正常退出的程序都被判成崩溃
     try {
-        $drvErr = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'nvlddmkm'; StartTime = $since } -ErrorAction Stop
-        if ($drvErr) { return @{ IsCrash = $true; Reason = 'nvlddmkm 驱动事件' } }
+        $drvErr = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'nvlddmkm'; StartTime = $exitTime.AddSeconds(-90); Level = 1, 2, 3 } -ErrorAction Stop |
+                  Select-Object -First 1
+        if ($drvErr) { return @{ IsCrash = $true; Reason = 'nvlddmkm 驱动错误' } }
     } catch {}
     return @{ IsCrash = $false; Reason = '无崩溃特征' }
 }
@@ -1419,6 +1439,7 @@ function Draw-SessionMarker($bmp, $from, $cnt) {
     } catch {}
 }
 
+if ($env:GCD_NODRAW -eq '1') { return }
 function Draw-Chart {
     if ($null -eq $script:TempHist -or $script:TempHist.Count -lt 1) { return }
     if (-not (Ensure-ChartBitmaps)) { return }
@@ -1642,7 +1663,8 @@ function Update-UI {
 
     # 游戏进程检测（自动记录 + 崩溃报告）
     if (-not $script:GameScanAt -or ((Get-Date) - $script:GameScanAt).TotalSeconds -ge 1) {
-        $script:GameScanResult = Find-RunningGame
+        if ($env:GCD_NOSCAN -eq '1') { $script:GameScanResult = $null } else { $script:GameScanResult = Find-RunningGame }
+        $script:GameScanAt = Get-Date
         $script:GameScanAt = Get-Date
     }
     $game = $script:GameScanResult
@@ -1666,7 +1688,7 @@ function Update-UI {
             $exitTime = Get-Date
             if ($script:Recording) {
                 Stop-Logging
-                $verdict = Test-IsCrash $exitTime
+                $verdict = Test-IsCrash $exitTime $(if ($script:GameName) { $script:GameName } else { "" })
                 $rep = Write-CrashReport $exitTime $verdict.IsCrash $verdict.Reason
                   if ($verdict.IsCrash) {
                       $lblHint.Text = "⚠ 判定为崩溃（$($verdict.Reason)），报告: $(Split-Path $rep -Leaf)"
@@ -1685,7 +1707,7 @@ $script:GameScanResult = $null
                     if ($verdict.IsCrash) { Add-Marker 'crash' $exitTime } else { Add-Marker 'gap' $exitTime }
                 } catch {}
                 Start-Logging 'system'
-                $lblHint.Text = "$($lblHint.Text)  已切回系统监控 logs\system\"
+                $lblHint.Text = $(if ($verdict.IsCrash) { "⚠ 判定为崩溃（$($verdict.Reason)）  报告: $(Split-Path $rep -Leaf)  已切回系统监控 logs\system\" } else { "游戏正常退出，记录已保存: $(Split-Path $rep -Leaf)  已切回系统监控 logs\system\" })
                 # 卡片放在恢复记录之后弹出，且非阻塞，避免采样停摆
                 if ($verdict.IsCrash) { try { Show-CrashCard -ReportPath $rep -SnapshotPath $snap -Reason $verdict.Reason } catch {} }
             }
