@@ -61,6 +61,16 @@ if (Test-Path $csPath) {
 }
 
 $Root    = Split-Path -Parent $PSCommandPath
+# ── 实例身份（v6 测试副本用）：本目录下有 instance.txt 就生效 ──
+# 互斥量、窗口标题、开机自启按身份区分，v5 与 v6 可同时运行、互不干扰
+$script:InstanceTag = ''
+try {
+    $instFile = Join-Path $Root 'instance.txt'
+    if (Test-Path $instFile) {
+        $script:InstanceTag = ((Get-Content $instFile -Raw -Encoding UTF8) -replace '\s', '')
+    }
+} catch { }
+$script:IsDevCopy = [bool]$script:InstanceTag
 # ── 多语言 ──
 $script:SettingsDir  = Join-Path $env:LOCALAPPDATA 'GameCrashDiag'
 $script:SettingsFile = Join-Path $script:SettingsDir 'settings.json'
@@ -452,7 +462,7 @@ $FontVer   = New-Object System.Drawing.Font('微软雅黑', 8)
 $FontBig   = New-Object System.Drawing.Font('Consolas', 25, [System.Drawing.FontStyle]::Bold)
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = $script:T.AppTitle
+$form.Text = $script:T.AppTitle + $(if ($script:InstanceTag) { "  [" + $script:InstanceTag + "]" } else { "" })
 $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
 $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
 $form.Size = New-Object System.Drawing.Size(760, 636)
@@ -927,6 +937,7 @@ function Test-AutoStart {
 
 function Set-AutoStart([bool]$enable) {
     try {
+        if ($script:IsDevCopy) { return $false }   # 测试副本绝不改动开机自启，避免顶掉正式版
         if ($enable) {
             # 用 wscript 启动，避免开机时 PowerShell 控制台窗口闪一下
             $vbs = Join-Path $Root '自启-托盘.vbs'
@@ -2295,7 +2306,9 @@ catch { }
 
 # ── 单实例保护：重复点图标只保留一个实例 ──
 if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView -or $TestCrash -or $TestClear -or $TestGameStart -or $TestMarkerShot -or $ShowAbout -or $ShowDiagnosis)) {
-    $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
+    $mutexName = 'Local\GameCrashDiag_SingleInstance'
+    if ($script:InstanceTag) { $mutexName = 'Local\GameCrashDiag_SingleInstance_' + $script:InstanceTag }
+    $script:SingleMutex = New-Object System.Threading.Mutex($false, $mutexName)
     if (-not $script:SingleMutex.WaitOne(0)) {
         # 已有实例：写信号文件让它把窗口弹出来，然后静默退出
         if (-not $Tray) {
@@ -3394,7 +3407,7 @@ try {
     if (Test-Path $icoPath) { $trayIcon.Icon = New-Object System.Drawing.Icon($icoPath) }
     else { $trayIcon.Icon = [System.Drawing.SystemIcons]::Application }
 } catch { $trayIcon.Icon = [System.Drawing.SystemIcons]::Application }
-$trayIcon.Text = $script:T.AppTitle
+$trayIcon.Text = $script:T.AppTitle + $(if ($script:InstanceTag) { "  [" + $script:InstanceTag + "]" } else { "" })
 $trayIcon.Visible = $true
 
 $trayMenu = New-Object System.Windows.Forms.ContextMenuStrip
