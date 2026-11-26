@@ -73,7 +73,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.93'
+$script:AppVersion = 'v5.94'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -822,6 +822,9 @@ $miLoadOlder.Add_Click({
             $hours = [math]::Round((Get-LoadedHours), 1)
             $lblHint.Text = $script:T.LoadOlderHint -f $added, $hours
             $lblHint.ForeColor = $C.Accent
+        } elseif ($script:LoadOlderStatus -eq 'cap') {
+            $lblHint.Text = $script:T.LoadOlderCap
+            $lblHint.ForeColor = $C.Warn
         } else {
             $lblHint.Text = $script:T.LoadOlderNone
             $lblHint.ForeColor = $C.Dim
@@ -1085,8 +1088,9 @@ function Load-OlderHistory([double]$Hours = 6) {
 
         # 总量上限 24 小时，避免内存无限增长
         $cap = [int](24 * 3600.0 / ($script:IntervalMs / 1000.0))
-        if ($script:TempHist.Count -ge $cap) { return 0 }
-        if (($cap - $script:TempHist.Count) -lt $need) { $need = $cap - $script:TempHist.Count }
+        if ($script:TempHist.Count -ge $cap) { $script:LoadOlderStatus = 'cap'; return 0 }
+        $script:LoadOlderStatus = 'none'
+        if (($cap - $script:TempHist.Count) -lt $need) { $need = $cap - $script:TempHist.Count; $script:LoadOlderStatus = 'cap' }
 
         $files = Get-ChildItem $LogDir -Recurse -Filter '*.csv' -ErrorAction SilentlyContinue |
                  Where-Object { $_.FullName -ne $script:LogFile -and $_.Length -gt 500 } |
@@ -1144,6 +1148,7 @@ function Load-OlderHistory([double]$Hours = 6) {
         }
         # 扩大上限，别让新的裁剪逻辑立刻把老数据裁掉
         $script:MaxPoints = [math]::Max($script:MaxPoints, $script:TempHist.Count + 600)
+        if ($added -gt 0) { $script:LoadOlderStatus = 'ok' }
         return $added
     } catch { return 0 }
 }
@@ -1596,6 +1601,12 @@ function Shift-View([int]$delta) {
                 $script:ViewShiftPts = [int]$script:ViewShiftPts + $added
                 $lblHint.Text = $script:T.LoadOlderHint -f $added, [math]::Round((Get-LoadedHours), 1)
                 $lblHint.ForeColor = $C.Accent
+            } elseif ($script:LoadOlderStatus -eq 'cap') {
+                $lblHint.Text = $script:T.LoadOlderCap
+                $lblHint.ForeColor = $C.Warn
+            } elseif ($script:LoadOlderStatus -eq 'none') {
+                $lblHint.Text = $script:T.LoadOlderNone
+                $lblHint.ForeColor = $C.Dim
             }
         } catch {} finally { $script:LoadingOlder = $false }
     }
@@ -1660,13 +1671,15 @@ function Draw-SessionMarker($bmp, $from, $cnt) {
         $g = [System.Drawing.Graphics]::FromImage($bmp)
         $font = New-Object System.Drawing.Font('微软雅黑', 7)
         foreach ($m in $script:Markers) {
-            # 按时间找到标记对应的数据下标（缓冲被裁剪后依然正确）
+            # 只画落在当前可视窗口内的标记：比窗口还早的标记直接跳过，
+            # 否则会被"第一个大于等于它的点"钉在最左边，看起来永远卡在左侧
+            if ($m.Time -lt $script:HistTime[$from]) { continue }
+            if ($m.Time -gt $script:HistTime[$to]) { continue }
             $idx = -1
             for ($q = $from; $q -le $to -and $q -lt $script:HistTime.Count; $q++) {
                 if ($script:HistTime[$q] -ge $m.Time) { $idx = $q; break }
             }
-            if ($idx -lt 0 -or $idx -gt $to) { continue }
-            if ($idx -lt $from) { continue }
+            if ($idx -lt $from -or $idx -gt $to) { continue }
 
             $frac = ($idx - $from) / [double]($cnt - 1)
             $x = [int](6 + $frac * ($bmp.Width - 12))

@@ -99,4 +99,5 @@
     MenuLoadOlder = 'Load older records'
     LoadOlderHint = 'Loaded {0} points (~{1} h) from logs'
     LoadOlderNone = 'No older records left'
+    LoadOlderCap = '24 hour limit reached, older data is not loaded'
 }

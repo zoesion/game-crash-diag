@@ -99,4 +99,5 @@
     MenuLoadOlder = '载入更早的记录'
     LoadOlderHint = '已从 logs 载入 {0} 个点（约 {1} 小时）'
     LoadOlderNone = '没有更早的记录可载入了'
+    LoadOlderCap = '已到 24 小时上限，更早的数据不再载入'
 }
