@@ -588,6 +588,8 @@ $cpuChart.BackColor = $C.Card
 $form.Controls.Add($cpuChart)
 # 位图在 Draw-Chart 里按控件实际像素尺寸懒创建（DPI 缩放后尺寸会变）
 $script:chartBmp = $null
+$script:chartBmpBack = $null
+$script:cpuBmpBack = $null
 $script:cpuBmp = $null
 
 # ── CPU 型号标题 ──
@@ -1540,18 +1542,23 @@ $script:ColOrange = [System.Drawing.Color]::FromArgb(255, 170, 70)
 
 function Ensure-ChartBitmaps {
     # 按控件实际像素尺寸创建位图（DPI 缩放后尺寸会变）
+    # 每张图备两个缓冲：画到背面，画完再切到正面显示，避免"边画边显示"造成的拖影
     $w1 = [int]$chart.ClientSize.Width; $h1 = [int]$chart.ClientSize.Height
     if ($w1 -lt 1 -or $h1 -lt 1) { return $false }
     if ($null -eq $script:chartBmp -or $script:chartBmp.Width -ne $w1 -or $script:chartBmp.Height -ne $h1) {
         if ($script:chartBmp) { $script:chartBmp.Dispose() }
+        if ($script:chartBmpBack) { $script:chartBmpBack.Dispose() }
         $script:chartBmp = New-Object System.Drawing.Bitmap($w1, $h1)
+        $script:chartBmpBack = New-Object System.Drawing.Bitmap($w1, $h1)
         $chart.Image = $script:chartBmp
     }
     $w2 = [int]$cpuChart.ClientSize.Width; $h2 = [int]$cpuChart.ClientSize.Height
     if ($w2 -lt 1 -or $h2 -lt 1) { return $false }
     if ($null -eq $script:cpuBmp -or $script:cpuBmp.Width -ne $w2 -or $script:cpuBmp.Height -ne $h2) {
         if ($script:cpuBmp) { $script:cpuBmp.Dispose() }
+        if ($script:cpuBmpBack) { $script:cpuBmpBack.Dispose() }
         $script:cpuBmp = New-Object System.Drawing.Bitmap($w2, $h2)
+        $script:cpuBmpBack = New-Object System.Drawing.Bitmap($w2, $h2)
         $cpuChart.Image = $script:cpuBmp
     }
     return $true
@@ -1783,19 +1790,23 @@ function Draw-Chart-Inner {
         if ($script:HasNvidia) {
             $labA = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendGpuTemp, $script:T.StatMax, $mxA, $script:T.StatMin, $mnA)
             $labB = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendPower, $script:T.StatMax, $mxB, $script:T.StatMin, $mnB)
-            [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $nGpu,
+            [ChartRenderer]::Render($script:chartBmpBack, $aGpu, $bGpu, $nGpu,
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 $labA, $labB, '°C', 'W', $hvg)
         }
         else {
             $labA = 'GPU 占用 %   最高 {0:N0}  最低 {1:N0}' -f $mxA, $mnA
             $labB = '显存 MB   最高 {0:N0}  最低 {1:N0}' -f $mxB, $mnB
-            [ChartRenderer]::Render($script:chartBmp, $aGpu, $bGpu, $nGpu,
+            [ChartRenderer]::Render($script:chartBmpBack, $aGpu, $bGpu, $nGpu,
                 $C.Card, $C.Grid, $C.Accent, $script:ColRed, $C.Dim, $infoTxt,
                 $labA, $labB, '%', 'MB', $hvg)
         }
-        Draw-SessionMarker $script:chartBmp $r.From $nGpu
-        $chart.Refresh()
+        Draw-SessionMarker $script:chartBmpBack $r.From $nGpu
+        # 画完再换到正面显示，避免显示到画了一半的帧
+        $script:tmpBmp = $script:chartBmp
+        $script:chartBmp = $script:chartBmpBack
+        $script:chartBmpBack = $script:tmpBmp
+        $chart.Image = $script:chartBmp
     }
 
     if ($script:CpuTempHist.Count -ge 1) {
@@ -1818,11 +1829,14 @@ function Draw-Chart-Inner {
             $labF = ('{0}   {1} {2:N0}  {3} {4:N0}' -f $script:T.LegendFreq, $script:T.StatMax, $mxF, $script:T.StatMin, $mnF)
             $hvc = -1
             if ($script:CpuHover -ge 0) { $hl2 = $script:CpuHover - $r.From; if ($hl2 -ge 0 -and $hl2 -lt $cCnt) { $hvc = $hl2 } }
-            [ChartRenderer]::Render($script:cpuBmp, $aCpu, $bCpu, $cCnt,
+            [ChartRenderer]::Render($script:cpuBmpBack, $aCpu, $bCpu, $cCnt,
                 $C.Card, $C.Grid, $C.Accent, $script:ColPurple, $C.Dim, $cInfo,
                 $labC, $labF, '°C', 'MHz', $hvc)
-            Draw-SessionMarker $script:cpuBmp $r.From $cCnt
-            $cpuChart.Refresh()
+            Draw-SessionMarker $script:cpuBmpBack $r.From $cCnt
+            $script:tmpBmp = $script:cpuBmp
+            $script:cpuBmp = $script:cpuBmpBack
+            $script:cpuBmpBack = $script:tmpBmp
+            $cpuChart.Image = $script:cpuBmp
 
             $cpuChart.Refresh()
         }
