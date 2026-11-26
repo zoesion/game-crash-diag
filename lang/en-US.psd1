@@ -92,4 +92,8 @@
     ClearAsk       = 'Delete all recorded history? This removes every file under logs and reports. It cannot be undone.'
     ClearDone      = 'All history cleared'
     ClearChartDone = 'Chart cleared'
+    MarkerCrash = 'CRASH'
+    MarkerDown  = 'POWER LOSS'
+    MarkerGap   = 'BREAK'
+    HintBadShutdown = 'Last session ended abnormally (freeze / power loss); the chart marks it'
 }

@@ -92,4 +92,8 @@
     ClearAsk       = '确定清空全部历史数据？会删除 logs 和 reports 里的所有文件，不可恢复。'
     ClearDone      = '已清空全部历史'
     ClearChartDone = '曲线已清空'
+    MarkerCrash = '崩溃'
+    MarkerDown  = '宕机'
+    MarkerGap   = '中断'
+    HintBadShutdown = '上次会话异常结束（死机 / 断电），曲线分界处已标注'
 }

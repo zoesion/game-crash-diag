@@ -29,6 +29,8 @@ param(
     [switch]$TestCrash,
     [switch]$TestClear,
     [switch]$TestGameStart,
+    [switch]$TestMarkerShot,
+    [string]$MarkerShotPath = '',
     [int]$IntervalMs = 500,
     [switch]$ForceLog,
     [switch]$ForceGeneric
@@ -70,7 +72,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.89'
+$script:AppVersion = 'v5.90'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -157,6 +159,7 @@ if (-not $ForceGeneric) {
 # ── LibreHardwareMonitor 传感器库（随程序分发，用户无需安装）──
 # 用来补齐 nvidia-smi 读不到的数据：AMD / Intel 显卡的温度、功耗、频率，以及 CPU 封装温度。
 $script:HasLhm = $false
+$script:LastShutdownWasBad = $false
 $script:LhmCpuTemp = $null
 $script:LhmCpuAt = [datetime]::MinValue
 try {
@@ -312,6 +315,7 @@ try {
 try { $null = $script:PcPerf.NextValue(); $null = $script:PcTime.NextValue(); $null = $script:PcUtil.NextValue(); $null = $script:PcMem.NextValue()
       foreach ($c0 in $script:PcCores) { $null = $c0.NextValue() } } catch {}
 $script:LastActiveCores = 0
+$script:Markers = New-Object 'System.Collections.Generic.List[object]'
 $script:CpuTempCache = $null
 $script:CpuTempCacheAt = $null
 
@@ -1345,34 +1349,72 @@ function Reset-View {
     Draw-Chart
 }
 
-function Draw-SessionMarker($bmp, $from, $cnt) {
-    <# 上一次会话与本此会话的分界，画一条竖向虚线 #>
+function Add-Marker([string]$kind, $time) {
+    <# 在曲线上记一个事件标记：crash=崩溃（红）、down=死机/断电（橙）、gap=普通中断（灰） #>
     try {
-        if (-not $script:RestoredCount -or $script:RestoredCount -le 0) { return }
-        if (-not $bmp) { return }
-        $b = $script:RestoredCount - 1
-        if ($cnt -lt 2) { return }
-        if ($b -lt $from -or $b -gt ($from + $cnt - 1)) { return }
-        $frac = ($b - $from) / [double]($cnt - 1)
-        $x = [int](6 + $frac * ($bmp.Width - 12))
-        $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(110, 150, 150, 172), 1)
-        $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
-        $g.DrawLine($pen, $x, 6, $x, $bmp.Height - 6)
-        $pen.Dispose()
+        if (-not $time) { $time = Get-Date }
+        if (-not $script:Markers) { $script:Markers = New-Object 'System.Collections.Generic.List[object]' }
+        [void]$script:Markers.Add([pscustomobject]@{ Kind = $kind; Time = [datetime]$time })
+        while ($script:Markers.Count -gt 30) { $script:Markers.RemoveAt(0) }
+    } catch { }
+}
 
-        # 在分界线旁标注间隔时长
-        if ($script:SessionGapMin -ge 1) {
-            $gapTxt = if ($script:SessionGapMin -ge 60) { $script:T.GapLabel -f ('{0:0.#} h' -f ($script:SessionGapMin / 60.0)) } else { $script:T.GapLabel -f ('{0} min' -f $script:SessionGapMin) }
-            $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(160, 170, 170, 190))
-            $font = New-Object System.Drawing.Font('微软雅黑', 7)
-            $sz = $g.MeasureString($gapTxt, $font)
+function Get-MarkerLabel([string]$kind) {
+    switch ($kind) {
+        'crash' { return $(if ($script:T.MarkerCrash) { $script:T.MarkerCrash } else { '崩溃' }) }
+        'down'  { return $(if ($script:T.MarkerDown) { $script:T.MarkerDown } else { '宕机' }) }
+        default { return $(if ($script:T.MarkerGap) { $script:T.MarkerGap } else { '中断' }) }
+    }
+}
+
+function Get-MarkerColor([string]$kind) {
+    switch ($kind) {
+        'crash' { return [System.Drawing.Color]::FromArgb(220, 235, 90, 90) }
+        'down'  { return [System.Drawing.Color]::FromArgb(220, 232, 150, 70) }
+        default { return [System.Drawing.Color]::FromArgb(120, 150, 150, 172) }
+    }
+}
+
+function Draw-SessionMarker($bmp, $from, $cnt) {
+    <# 画所有事件标记：崩溃（红实线）、死机（橙实线）、普通中断（灰虚线） #>
+    try {
+        if (-not $bmp -or $cnt -lt 2) { return }
+        if (-not $script:Markers -or $script:Markers.Count -eq 0) { return }
+        if ($script:HistTime.Count -lt 2) { return }
+
+        $to = $from + $cnt - 1
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $font = New-Object System.Drawing.Font('微软雅黑', 7)
+        foreach ($m in $script:Markers) {
+            # 按时间找到标记对应的数据下标（缓冲被裁剪后依然正确）
+            $idx = -1
+            for ($q = $from; $q -le $to -and $q -lt $script:HistTime.Count; $q++) {
+                if ($script:HistTime[$q] -ge $m.Time) { $idx = $q; break }
+            }
+            if ($idx -lt 0 -or $idx -gt $to) { continue }
+            if ($idx -lt $from) { continue }
+
+            $frac = ($idx - $from) / [double]($cnt - 1)
+            $x = [int](6 + $frac * ($bmp.Width - 12))
+            $col = Get-MarkerColor $m.Kind
+            $pen = New-Object System.Drawing.Pen($col, $(if ($m.Kind -eq 'gap') { 1 } else { 1.6 }))
+            if ($m.Kind -eq 'gap') { $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash }
+            $g.DrawLine($pen, $x, 4, $x, $bmp.Height - 4)
+            $pen.Dispose()
+
+            $txt = Get-MarkerLabel $m.Kind
+            if ($m.Kind -eq 'gap' -and $script:SessionGapMin -ge 1) {
+                $span = if ($script:SessionGapMin -ge 60) { '{0:0.#} h' -f ($script:SessionGapMin / 60.0) } else { '{0} min' -f $script:SessionGapMin }
+                $txt = $script:T.GapLabel -f $span
+            }
+            $brush = New-Object System.Drawing.SolidBrush($col)
+            $sz = $g.MeasureString($txt, $font)
             $tx = $x - $sz.Width - 4
             if ($tx -lt 2) { $tx = $x + 4 }
-            $g.DrawString($gapTxt, $font, $brush, $tx, ($bmp.Height - 18))
-            $font.Dispose()
+            $g.DrawString($txt, $font, $brush, $tx, ($bmp.Height - 18))
             $brush.Dispose()
         }
+        $font.Dispose()
         $g.Dispose()
     } catch {}
 }
@@ -1630,7 +1672,6 @@ function Update-UI {
                       $lblHint.Text = "⚠ 判定为崩溃（$($verdict.Reason)），报告: $(Split-Path $rep -Leaf)"
                       $lblHint.ForeColor = $C.Bad
                       $snap = Save-CrashSnapshot -Stamp ($exitTime.ToString('yyyyMMdd-HHmmss'))
-                      Show-CrashCard -ReportPath $rep -SnapshotPath $snap -Reason $verdict.Reason
                   }
                 else {
                     $lblHint.Text = "游戏正常退出，对局记录已保存: $(Split-Path $rep -Leaf)"
@@ -1639,8 +1680,14 @@ function Update-UI {
                 $script:GameName = $null
 $script:GameScanAt = $null
 $script:GameScanResult = $null
+                # 崩溃/正常退出都在曲线上留个标记；先恢复记录，卡片不阻塞
+                try {
+                    if ($verdict.IsCrash) { Add-Marker 'crash' $exitTime } else { Add-Marker 'gap' $exitTime }
+                } catch {}
                 Start-Logging 'system'
                 $lblHint.Text = "$($lblHint.Text)  已切回系统监控 logs\system\"
+                # 卡片放在恢复记录之后弹出，且非阻塞，避免采样停摆
+                if ($verdict.IsCrash) { try { Show-CrashCard -ReportPath $rep -SnapshotPath $snap -Reason $verdict.Reason } catch {} }
             }
         }
     }
@@ -1802,9 +1849,23 @@ $form.Add_Shown({
         try { $script:RestoredCount = Restore-HistoryFromLastLog } catch { $script:RestoredCount = 0 }
         if ($script:RestoredCount -gt 0 -and $script:RestoreLastTime) {
             $script:SessionGapMin = [int][math]::Round(((Get-Date) - $script:RestoreLastTime).TotalMinutes)
+            # 上次是正常关机、还是死机/蓝屏/断电？查事件日志判断
+            $kind = 'gap'
+            try {
+                $since = $script:RestoreLastTime.AddMinutes(-2)
+                $bad = Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = $since; Id = 41, 1001, 6008 } -ErrorAction SilentlyContinue |
+                       Select-Object -First 1
+                if ($bad) { $kind = 'down' }
+            } catch { }
+            Add-Marker $kind $script:RestoreLastTime
+            if ($kind -eq 'down') { $script:LastShutdownWasBad = $true }
         }
         $lblHint.Text = $script:T.HintNoGame
         if ($script:RestoredCount -gt 0) { $lblHint.Text += ($script:T.RestoredHint -f $script:RestoredCount) }
+        if ($script:LastShutdownWasBad) {
+            $lblHint.Text += "  ⚠ " + $(if ($script:T.HintBadShutdown) { $script:T.HintBadShutdown } else { '上次会话异常结束（死机 / 断电），曲线分界处已标注' })
+            $lblHint.ForeColor = $C.Warn
+        }
     }
     Update-UI
 })
@@ -1874,7 +1935,7 @@ try {
 catch { }
 
 # ── 单实例保护：重复点图标只保留一个实例 ──
-if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView -or $TestCrash -or $TestClear -or $TestGameStart -or $ShowAbout -or $ShowDiagnosis)) {
+if (-not ($SelfTest -or $UiTest -or $Shot -or $ForceLog -or $TestDiagnosis -or $TestReport -or $TestView -or $TestCrash -or $TestClear -or $TestGameStart -or $TestMarkerShot -or $ShowAbout -or $ShowDiagnosis)) {
     $script:SingleMutex = New-Object System.Threading.Mutex($false, 'Local\GameCrashDiag_SingleInstance')
     if (-not $script:SingleMutex.WaitOne(0)) {
         # 已有实例：写信号文件让它把窗口弹出来，然后静默退出
@@ -2748,9 +2809,10 @@ function Show-CrashCard {
     $btnClose2.Add_Click({ $dlg.Close() })
     $dlg.Controls.Add($btnClose2)
 
-    [void]$dlg.ShowDialog($form)
+    # 非模态显示：模态会卡住 500ms 采样循环，导致"崩溃后就不记录了"
+    try { $dlg.TopMost = $true } catch {}
+    $dlg.Show()
 }
-
 function Show-AboutDialog {
     $aboutEn = @(
         ("GameCrashDiag  " + $script:AppVersion),
@@ -3143,6 +3205,26 @@ if ($ShowAbout -or $ShowDiagnosis) {
     if ($ShowAbout) { Show-AboutDialog } else { Show-DiagnosisWindow }
     exit 0
 }
+if ($TestMarkerShot) {
+    # 画出三种标记，存成图片用于核对
+    $bmp = New-Object System.Drawing.Bitmap(900, 160)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.Clear([System.Drawing.Color]::FromArgb(24, 24, 28))
+    $g.Dispose()
+    $base = (Get-Date).AddMinutes(-10)
+    for ($k = 0; $k -lt 600; $k++) { [void]$script:HistTime.Add($base.AddSeconds($k)) }
+    Add-Marker 'gap'   $base.AddSeconds(120)
+    Add-Marker 'crash' $base.AddSeconds(300)
+    Add-Marker 'down'  $base.AddSeconds(480)
+    Add-Marker 'crash' $base.AddSeconds(560)
+    $script:SessionGapMin = 47
+    Draw-SessionMarker $bmp 0 600
+    $bmp.Save($MarkerShotPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp.Dispose()
+    Write-Output ("已保存: " + $MarkerShotPath)
+    exit 0
+}
+
 if ($TestGameStart) {
     # 复现「游戏中开局」场景：先记录一段，再 Start-Logging（模拟检测到游戏），检查四条曲线是否等长
     Start-Logging 'system'
