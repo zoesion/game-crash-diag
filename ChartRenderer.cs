@@ -140,7 +140,7 @@ public static class ChartRenderer
             if (hover >= 0 && hover < count)
             {
                 float hx = 6f + (float)((w - 12) * (hover / (double)(count - 1)));
-                using (Pen penH = new Pen(Color.FromArgb(215, 232, 92, 92), 1f))
+                using (Pen penH = new Pen(Color.FromArgb(235, 245, 245, 250), 1f))
                 {
                     // 红色实线，直接贯穿图表，方便对准鼠标
                     g.DrawLine(penH, hx, 0, hx, h);

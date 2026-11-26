@@ -723,9 +723,18 @@ $script:ChartThumb.Add_MouseMove({ param($s, $e)
     $script:LastViewTouch = Get-Date
     $script:GpuHover = -1
     $script:CpuHover = -1
-    Draw-Chart
+    # 拖拽时限制重绘频率：每次重绘 ~35ms，鼠标事件 60/s 会让界面卡住、看起来像"拖影"
+    $now = Get-Date
+    if (-not $script:LastDragDraw -or ($now - $script:LastDragDraw).TotalMilliseconds -ge 70) {
+        $script:LastDragDraw = $now
+        Draw-Chart
+    }
 })
-$script:ChartThumb.Add_MouseUp({ param($s, $e) $script:BarDrag = $false })
+$script:ChartThumb.Add_MouseUp({ param($s, $e)
+    $script:BarDrag = $false
+    $script:LastDragDraw = $null
+    Draw-Chart      # 松手时补一帧，保证最终位置正确
+})
 $script:ChartThumb.Add_MouseEnter({ param($s, $e) $script:ChartThumb.BackColor = $script:BarThumbHot })
 $script:ChartThumb.Add_MouseLeave({ param($s, $e) if (-not $script:BarDrag) { $script:ChartThumb.BackColor = $script:BarThumb } })
 
