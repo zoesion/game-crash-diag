@@ -73,7 +73,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.95'
+$script:AppVersion = 'v5.96'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -331,6 +331,7 @@ try {
 try { $null = $script:PcPerf.NextValue(); $null = $script:PcTime.NextValue(); $null = $script:PcUtil.NextValue(); $null = $script:PcMem.NextValue()
       foreach ($c0 in $script:PcCores) { $null = $c0.NextValue() } } catch {}
 $script:LastActiveCores = 0
+$script:LastViewTouch = $null
 $script:Markers = New-Object 'System.Collections.Generic.List[object]'
 $script:CpuTempCache = $null
 $script:CpuTempCacheAt = $null
@@ -704,6 +705,7 @@ function Update-ChartBar {
 
 $script:ChartThumb.Add_MouseDown({ param($s, $e)
     $script:BarDrag = $true
+    $script:LastViewTouch = Get-Date
     $script:BarDragX = [System.Windows.Forms.Cursor]::Position.X
     $script:BarDragShift = $script:ViewShiftPts
 })
@@ -718,6 +720,7 @@ $script:ChartThumb.Add_MouseMove({ param($s, $e)
     if ($shift -gt $scrollable) { $shift = $scrollable }
     $script:ViewShiftPts = $shift
     $script:FollowLive = ($shift -le 0)
+    $script:LastViewTouch = Get-Date
     $script:GpuHover = -1
     $script:CpuHover = -1
     Draw-Chart
@@ -733,6 +736,7 @@ $script:ChartBar.Add_MouseDown({ param($s, $e)
     if ($x -lt 0) { $x = 0 }
     if ($x -gt $travel) { $x = $travel }
     $script:ChartThumb.Left = $x
+    $script:LastViewTouch = Get-Date
     Set-ChartShiftFromThumb
 })
 $form.Controls.Add($script:ChartBar)
@@ -960,8 +964,8 @@ $script:GameSeen   = $false
 $script:GameStart  = $null
 $script:IntervalMs = $IntervalMs
 $script:MaxPoints  = [math]::Max(1000, [int](21600000 / [math]::Max(100, $IntervalMs)))         # 曲线缓存点数（覆盖 6 小时）
-$script:ViewSpanMin  = 10                       # 当前窗口跨度（分钟）
-$script:ViewSpanPts  = 1200                     # 由 ViewSpanMin 换算，见下方初始化
+$script:ViewSpanMin  = 5                        # 当前窗口跨度（分钟）
+$script:ViewSpanPts  = 600                      # 由 ViewSpanMin 换算，见下方初始化
 $script:ViewShiftPts = 0                        # 距最新数据的偏移点数，0 = 跟随最新
 $script:HistTime   = New-Object 'System.Collections.Generic.List[datetime]'
 $script:TempHist   = New-Object 'System.Collections.Generic.List[double]'
@@ -1591,6 +1595,7 @@ function Shift-View([int]$delta) {
     $step = [math]::Max(1, [int]($r.Span / 4))
     $maxShift = [math]::Max(0, $script:TempHist.Count - $r.Span)
     $script:ViewShiftPts = [math]::Max(0, [math]::Min($maxShift, $script:ViewShiftPts + $delta * $step))
+    $script:LastViewTouch = Get-Date
     # 拖动/滚轮只负责平移，不再自动去 logs 里载入；
     # 载入历史改成显式操作（菜单 ☰ → 载入更早的记录），免得一滚就被暂停
     $script:FollowLive = ($script:ViewShiftPts -le 0)
@@ -1902,6 +1907,13 @@ function Update-UI {
 
     # CPU 曲线：沿用最近一次有效值，保证和 GPU 曲线等宽
     if ($script:FollowLive) { $script:ViewShiftPts = 0 }
+    elseif ($script:LastViewTouch -and ((Get-Date) - $script:LastViewTouch).TotalSeconds -ge 45) {
+        # 回看超过 45 秒没动过，自动回到跟随最新，避免一直停在"已暂停"
+        $script:ViewShiftPts = 0
+        $script:FollowLive = $true
+        $lblHint.Text = $script:T.HintLive
+        $lblHint.ForeColor = $C.Dim
+    }
     [void]$script:CpuHistTime.Add((Get-Date))
     [void]$script:CpuTempHist.Add([double]$script:LastCpuTemp)
     [void]$script:CpuFreqHist.Add([double]$script:LastCpuFreq)
