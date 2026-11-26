@@ -73,7 +73,7 @@ try {
 } catch { }
 if (-not (Test-Path (Join-Path $Root "lang\$($script:LangCode).psd1"))) { $script:LangCode = 'zh-CN' }
 $script:T = Import-PowerShellDataFile -Path (Join-Path $Root "lang\$($script:LangCode).psd1")
-$script:AppVersion = 'v5.92'
+$script:AppVersion = 'v5.93'
 $script:BuildDate  = '2026-11-25'
 
 function Set-Language([string]$code) {
@@ -808,6 +808,27 @@ $miClear = $script:MainMenu.Items.Add($script:T.MenuClear)
 $miClearChart = $miClear.DropDownItems.Add($script:T.ClearChart)
 $miClearAll   = $miClear.DropDownItems.Add($script:T.ClearAll)
 
+# ── 载入更早的记录（从 logs 往前拼） ──
+$miLoadOlder = $script:MainMenu.Items.Add($script:T.MenuLoadOlder)
+$miLoadOlder.Add_Click({
+    $script:Timer.Stop()
+    try {
+        $before = $script:TempHist.Count
+        $added = Load-OlderHistory 6
+        $script:FollowLive = $false
+        $script:ViewShiftPts = [int]$script:ViewShiftPts + $added
+        Draw-Chart
+        if ($added -gt 0) {
+            $hours = [math]::Round((Get-LoadedHours), 1)
+            $lblHint.Text = $script:T.LoadOlderHint -f $added, $hours
+            $lblHint.ForeColor = $C.Accent
+        } else {
+            $lblHint.Text = $script:T.LoadOlderNone
+            $lblHint.ForeColor = $C.Dim
+        }
+    } catch {} finally { $script:Timer.Start() }
+})
+
 $miClearChart.Add_Click({
     $script:Timer.Stop()
     try {
@@ -1044,6 +1065,87 @@ function Compress-HistStore {
         if ($script:HistWriter) { $script:HistWriter.Close(); $script:HistWriter = $null }
         [System.IO.File]::WriteAllLines($path, $keep, (New-Object System.Text.UTF8Encoding($false)))
     } catch {}
+}
+
+function Get-LoadedHours {
+    <# 当前曲线覆盖多少小时 #>
+    try {
+        if ($script:HistTime.Count -lt 2) { return 0 }
+        return [math]::Round(($script:HistTime[$script:HistTime.Count - 1] - $script:HistTime[0]).TotalHours, 1)
+    } catch { return 0 }
+}
+
+function Load-OlderHistory([double]$Hours = 6) {
+    <# 从 logs\ 里再往前读一段 CSV，拼到曲线左边；返回新增点数 #>
+    try {
+        if ($script:HistTime.Count -lt 1) { return 0 }
+        $earliest = $script:HistTime[0]
+        $need = [int]($Hours * 3600.0 / ($script:IntervalMs / 1000.0))
+        if ($need -le 0) { return 0 }
+
+        # 总量上限 24 小时，避免内存无限增长
+        $cap = [int](24 * 3600.0 / ($script:IntervalMs / 1000.0))
+        if ($script:TempHist.Count -ge $cap) { return 0 }
+        if (($cap - $script:TempHist.Count) -lt $need) { $need = $cap - $script:TempHist.Count }
+
+        $files = Get-ChildItem $LogDir -Recurse -Filter '*.csv' -ErrorAction SilentlyContinue |
+                 Where-Object { $_.FullName -ne $script:LogFile -and $_.Length -gt 500 } |
+                 Sort-Object LastWriteTime -Descending
+        if (-not $files) { return 0 }
+
+        $rows = New-Object System.Collections.Generic.List[object]
+        foreach ($f in $files) {
+            if ($rows.Count -ge $need) { break }
+            $day = $null
+            $m = [regex]::Match($f.BaseName, '(\d{8})-\d{6}')
+            if ($m.Success) { try { $day = [datetime]::ParseExact($m.Groups[1].Value, 'yyyyMMdd', $null) } catch { } }
+            if (-not $day) { continue }
+            $lines = $null
+            try { $lines = [System.IO.File]::ReadAllLines($f.FullName) } catch { continue }
+            $chunk = New-Object System.Collections.Generic.List[object]
+            for ($k = $lines.Count - 1; $k -ge 1; $k--) {
+                $a = $lines[$k] -split ','
+                if ($a.Count -lt 16) { continue }
+                $t = $null
+                try { $t = [datetime]::ParseExact($a[0], 'HH:mm:ss', $null) } catch { continue }
+                $dt = $day.AddHours($t.Hour).AddMinutes($t.Minute).AddSeconds($t.Second)
+                if ($dt -ge $earliest) { continue }
+                if (($earliest - $dt).TotalHours -gt $Hours) { break }
+                $gt = 0.0; $gw = 0.0; $ct = 0.0; $cf = 0.0
+                [void][double]::TryParse($a[1], [ref]$gt)
+                [void][double]::TryParse($a[2], [ref]$gw)
+                [void][double]::TryParse($a[14], [ref]$ct)
+                [void][double]::TryParse($a[15], [ref]$cf)
+                $chunk.Add([pscustomobject]@{ T = $dt; GT = $gt; GW = $gw; CT = $ct; CF = $cf })
+                if ($rows.Count + $chunk.Count -ge $need) { break }
+            }
+            if ($chunk.Count -gt 0) {
+                $chunk.Reverse()
+                foreach ($r in $chunk) { $rows.Add($r) }
+            }
+        }
+        if ($rows.Count -eq 0) { return 0 }
+
+        # 按时间排序、去重（多个文件拼起来顺序会乱），只取离当前最近的 need 个
+        $sorted = @($rows | Sort-Object T)
+        if ($sorted.Count -gt $need) { $sorted = $sorted[($sorted.Count - $need)..($sorted.Count - 1)] }
+        $added = 0
+        if ($sorted.Count -gt 0) { $script:RestoreLastTime = $sorted[0].T }
+        for ($i = $sorted.Count - 1; $i -ge 0; $i--) {
+            $r = $sorted[$i]
+            if ($r.T -ge $earliest) { continue }
+            $script:HistTime.Insert(0, $r.T)
+            $script:TempHist.Insert(0, $r.GT)
+            $script:PowerHist.Insert(0, $r.GW)
+            $script:CpuHistTime.Insert(0, $r.T)
+            $script:CpuTempHist.Insert(0, $r.CT)
+            $script:CpuFreqHist.Insert(0, $r.CF)
+            $added++
+        }
+        # 扩大上限，别让新的裁剪逻辑立刻把老数据裁掉
+        $script:MaxPoints = [math]::Max($script:MaxPoints, $script:TempHist.Count + 600)
+        return $added
+    } catch { return 0 }
 }
 
 function Restore-HistoryFromStore {
@@ -1482,7 +1584,21 @@ function Shift-View([int]$delta) {
     <# 正值 = 往更早的数据翻（像往左拖） #>
     $r = Get-ViewRange
     $step = [math]::Max(1, [int]($r.Span / 4))
+    $before = [int]$script:ViewShiftPts
     $script:ViewShiftPts = [math]::Max(0, [math]::Min($script:TempHist.Count - $r.Span, $script:ViewShiftPts + $delta * $step))
+    # 已经翻到最左边还想往左？自动从 logs 里再载入 6 小时
+    $atLeftEdge = ($script:ViewShiftPts -ge ($script:TempHist.Count - $r.Span) - 1)
+    if ($delta -gt 0 -and $atLeftEdge -and -not $script:LoadingOlder) {
+        $script:LoadingOlder = $true
+        try {
+            $added = Load-OlderHistory 6
+            if ($added -gt 0) {
+                $script:ViewShiftPts = [int]$script:ViewShiftPts + $added
+                $lblHint.Text = $script:T.LoadOlderHint -f $added, [math]::Round((Get-LoadedHours), 1)
+                $lblHint.ForeColor = $C.Accent
+            }
+        } catch {} finally { $script:LoadingOlder = $false }
+    }
     $script:GpuHover = -1
     $script:CpuHover = -1
     Draw-Chart
@@ -3391,7 +3507,11 @@ if ($TestRestore) {
         if ($all.Count -gt 0) { Write-Output ("首行: " + $all[0]); Write-Output ("末行: " + $all[-1]) }
     }
     $n = Restore-HistoryFromStore
-    Write-Output ("恢复点数: " + $n + "  曲线点数: " + $script:TempHist.Count)
+    Write-Output ("恢复到: " + $script:TempHist.Count + " 点，覆盖 " + (Get-LoadedHours) + " 小时")
+    $more = Load-OlderHistory 6
+    Write-Output ("载入更早: " + $more + " 点，现在共 " + $script:TempHist.Count + " 点，覆盖 " + (Get-LoadedHours) + " 小时")
+    $more2 = Load-OlderHistory 6
+    Write-Output ("再载入: " + $more2 + " 点，覆盖 " + (Get-LoadedHours) + " 小时")
     Load-MarkersFromDisk
     Write-Output ("标记数: " + $script:Markers.Count)
     if ($script:TempHist.Count -ge 2) { Draw-Chart; Write-Output "绘制完成（无异常）" }

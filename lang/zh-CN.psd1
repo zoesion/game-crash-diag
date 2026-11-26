@@ -96,4 +96,7 @@
     MarkerDown  = '宕机'
     MarkerGap   = '中断'
     HintBadShutdown = '上次会话异常结束（死机 / 断电），曲线分界处已标注'
+    MenuLoadOlder = '载入更早的记录'
+    LoadOlderHint = '已从 logs 载入 {0} 个点（约 {1} 小时）'
+    LoadOlderNone = '没有更早的记录可载入了'
 }

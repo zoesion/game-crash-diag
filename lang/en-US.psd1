@@ -96,4 +96,7 @@
     MarkerDown  = 'POWER LOSS'
     MarkerGap   = 'BREAK'
     HintBadShutdown = 'Last session ended abnormally (freeze / power loss); the chart marks it'
+    MenuLoadOlder = 'Load older records'
+    LoadOlderHint = 'Loaded {0} points (~{1} h) from logs'
+    LoadOlderNone = 'No older records left'
 }
