@@ -1700,7 +1700,7 @@ function Draw-SessionMarker($bmp, $from, $cnt) {
 }
 
 if ($env:GCD_NODRAW -eq '1') { return }
-function Draw-Chart {
+function Draw-Chart-Inner {
     if ($null -eq $script:TempHist -or $script:TempHist.Count -lt 1) { return }
     if (-not (Ensure-ChartBitmaps)) { return }
 
@@ -1817,6 +1817,20 @@ function Draw-Chart {
 
             $cpuChart.Refresh()
         }
+    }
+}
+
+function Draw-Chart {
+    <# 外层兜底：任何绘图异常都不再弹 PowerShell 错误框，只记录并提示 #>
+    try { Draw-Chart-Inner }
+    catch {
+        try {
+            Set-Content (Join-Path $env:TEMP 'gcd-ui-error.txt') -Encoding UTF8 -Value ((Get-Date).ToString('HH:mm:ss') + ' Draw-Chart: ' + ($_ | Out-String) + "`n" + $_.ScriptStackTrace)
+        } catch {}
+        try {
+            $lblHint.Text = $(if ($script:T.HintDrawFail) { $script:T.HintDrawFail } else { '绘图出错，已记录到 %TEMP%\gcd-ui-error.txt（程序继续记录）' })
+            $lblHint.ForeColor = $C.Warn
+        } catch {}
     }
 }
 # ════════════════════════════════ 定时刷新 ════════════════════════════════

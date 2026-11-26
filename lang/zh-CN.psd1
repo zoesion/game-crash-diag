@@ -26,7 +26,7 @@
     ChartPerPoint  = '每 {0:g} 秒 1 点'
     ChartPoints    = '{0:N0} 点'
     ChartMinutes   = '{0} 分钟'
-    ChartPaused    = '{0} ~ {1}  （已暂停，共 {2:N0} 点）'
+    ChartPaused  = '{0} ~ {1} · {2} 点（回看中）'
     ChartWaiting   = '等待数据...'
 
     RowVram     = '显存'
@@ -100,6 +100,7 @@
     LoadOlderHint = '已从 logs 载入 {0} 个点（约 {1} 小时）'
     LoadOlderNone = '没有更早的记录可载入了'
     LoadOlderCap = '已到 24 小时上限，更早的数据不再载入'
-    HintPaused = '已暂停：向上拖动滚动条回到最新，或点 ☰ 载入更早的记录'
-    HintLive   = '跟随最新（拖动滚动条可回看）'
+    HintPaused   = '回看中：拖回最右侧恢复跟随（45 秒不动也会自动恢复）'
+    HintLive     = '跟随最新（拖动滚动条可回看）'
+    HintDrawFail = '绘图出错，已记录到 %TEMP%\gcd-ui-error.txt，记录仍在继续'
 }

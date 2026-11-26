@@ -26,7 +26,7 @@
     ChartPerPoint  = '1 point / {0:g}s'
     ChartPoints    = '{0:N0} pts'
     ChartMinutes   = '{0} min'
-    ChartPaused    = '{0} ~ {1}  (paused, {2:N0} pts)'
+    ChartPaused  = '{0} ~ {1} · {2} pts (reviewing)'
     ChartWaiting   = 'Waiting for data...'
 
     RowVram     = 'VRAM'
@@ -100,6 +100,7 @@
     LoadOlderHint = 'Loaded {0} points (~{1} h) from logs'
     LoadOlderNone = 'No older records left'
     LoadOlderCap = '24 hour limit reached, older data is not loaded'
-    HintPaused = 'Paused - drag the scrollbar back to the latest, or use the menu to load older data'
-    HintLive   = 'Following live (drag the scrollbar to look back)'
+    HintPaused   = 'Reviewing: drag back to the right edge to follow live again (or wait 45 s)'
+    HintLive     = 'Following live (drag the scrollbar to look back)'
+    HintDrawFail = 'Chart error logged to %TEMP%\gcd-ui-error.txt; recording continues'
 }
