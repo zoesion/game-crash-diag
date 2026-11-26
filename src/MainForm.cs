@@ -61,6 +61,12 @@ public sealed class MainForm : Form
     private int _hoverGpu = -1, _hoverCpu = -1;
     private bool _exitFlag;
 
+    // game mode
+    private GameDetect.Hit _game;
+    private DateTime _gameStart = DateTime.Now;
+    private DateTime _scanAt = DateTime.MinValue;
+    private readonly List<string> _tail = new List<string>();
+
     public MainForm(string root, string tag)
     {
         _root = root;
@@ -281,8 +287,18 @@ public sealed class MainForm : Form
             _cTime.RemoveRange(0, drop); _cTemp.RemoveRange(0, drop); _cFreq.RemoveRange(0, drop);
         }
 
-        _store.AppendCsv(s);
         _store.AppendHistory(s);
+        try
+        {
+            string csvLine = _store.AppendCsv(s);
+            if (!string.IsNullOrEmpty(csvLine))
+            {
+                _tail.Add(csvLine);
+                if (_tail.Count > 200) _tail.RemoveRange(0, _tail.Count - 200);
+            }
+        }
+        catch { }
+        CheckGame();
 
         _valTemp.Text = Fmt(s.GpuTemp, "0.0");
         _valPower.Text = Fmt(s.GpuPower, "0");
@@ -363,6 +379,126 @@ public sealed class MainForm : Form
         }
         catch { }
         return Math.Max(1, Environment.ProcessorCount / 2);
+    }
+
+    // ── game detection ──────────────────────────────────────────
+    private void CheckGame()
+    {
+        if ((DateTime.Now - _scanAt).TotalSeconds < 1) return;
+        _scanAt = DateTime.Now;
+
+        GameDetect.Hit hit;
+        try { hit = GameDetect.Find(); } catch { hit = null; }
+
+        if (hit != null && _game == null)
+        {
+            _game = hit;
+            _gameStart = hit.StartTime > DateTime.Now.AddDays(-1) ? hit.StartTime : DateTime.Now;
+            _tail.Clear();
+            _store.StartLog(SafeName(hit.Name), 500);
+            _lblHint.Text = string.Format(I18n.T("HintGame", "已检测到游戏 {0}，正在记录到 logs\\{1}\\"),
+                hit.Name, SafeName(hit.Name));
+            _lblHint.ForeColor = CAccent;
+        }
+        else if (hit == null && _game != null)
+        {
+            var closed = _game;
+            _game = null;
+            DateTime exitTime = DateTime.Now;
+
+            var verdict = CrashReport.Test(exitTime, closed.Name);
+            var input = new CrashReport.ReportInput
+            {
+                IsCrash = verdict.IsCrash,
+                Reason = verdict.Reason,
+                GameName = closed.Name,
+                Category = SafeName(closed.Name),
+                StartTime = _gameStart,
+                ExitTime = exitTime,
+                TelemetryFile = _store.LogFile,
+                TailRows = new List<string>(_tail)
+            };
+            string report = CrashReport.Write(_root, input);
+            string snap = verdict.IsCrash
+                ? CrashReport.SaveSnapshot(_root, _bmpFront, _bmpCpuFront)
+                : "";
+
+            _markers.Add(new Marker { Time = exitTime, Kind = verdict.IsCrash ? "crash" : "gap" });
+            _store.SaveMarkers(_markers);
+
+            _store.StartLog("system", 500);
+            _tail.Clear();
+
+            if (verdict.IsCrash)
+            {
+                _lblHint.Text = string.Format("⚠ 判定为崩溃（{0}），报告: {1}  已切回系统监控",
+                    verdict.Reason, Path.GetFileName(report));
+                _lblHint.ForeColor = CBad;
+                try
+                {
+                    var card = new CrashCard("游戏崩溃诊断器",
+                        string.Format("{0}  (依据: {1})", closed.Name, verdict.Reason), report, snap);
+                    card.Show();
+                }
+                catch { }
+            }
+            else
+            {
+                _lblHint.Text = "游戏正常退出，记录已保存: " + Path.GetFileName(report) + "  已切回系统监控";
+                _lblHint.ForeColor = CDim;
+            }
+        }
+    }
+
+    // ── crash flow self test (no real game needed) ──────────────
+    public string RunCrashFlowTest()
+    {
+        var sb = new System.Text.StringBuilder();
+        var fake = new GameDetect.Hit { Pid = 9999, Name = "testgame", Memory = 3L * 1024 * 1024 * 1024, StartTime = DateTime.Now };
+        _game = fake;
+        _gameStart = DateTime.Now.AddMinutes(-5);
+        _tail.Clear();
+        _store.StartLog("testgame", 500);
+        sb.AppendLine("开始记录: " + Path.GetFileName(_store.LogFile));
+        for (int i = 0; i < 8; i++)
+        {
+            var s = TakeSample();
+            s.Time = DateTime.Now;
+            string line = _store.AppendCsv(s);
+            if (!string.IsNullOrEmpty(line)) _tail.Add(line);
+            System.Threading.Thread.Sleep(200);
+        }
+        sb.AppendLine("已采集 " + _tail.Count + " 条");
+
+        var verdict = CrashReport.Test(DateTime.Now, "testgame");
+        var input = new CrashReport.ReportInput
+        {
+            IsCrash = verdict.IsCrash,
+            Reason = verdict.Reason,
+            GameName = fake.Name,
+            Category = "testgame",
+            StartTime = _gameStart,
+            ExitTime = DateTime.Now,
+            TelemetryFile = _store.LogFile,
+            TailRows = new List<string>(_tail)
+        };
+        string report = CrashReport.Write(_root, input);
+        sb.AppendLine("判定: " + (verdict.IsCrash ? "崩溃" : "正常退出") + "  依据: " + verdict.Reason);
+        sb.AppendLine("报告: " + report);
+        _markers.Add(new Marker { Time = DateTime.Now, Kind = verdict.IsCrash ? "crash" : "gap" });
+        _store.SaveMarkers(_markers);
+        sb.AppendLine("标记数: " + _markers.Count);
+        _store.StartLog("system", 500);
+        sb.AppendLine("已切回: " + Path.GetFileName(_store.LogFile));
+        _game = null;
+        return sb.ToString();
+    }
+
+    private static string SafeName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "game";
+        foreach (char c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
+        return name.Trim();
     }
 
     private double TotalRamGb()

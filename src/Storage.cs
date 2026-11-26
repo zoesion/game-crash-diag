@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -49,9 +49,9 @@ public sealed class Storage
         return LogFile;
     }
 
-    public void AppendCsv(Sample s)
+    public string AppendCsv(Sample s)
     {
-        if (string.IsNullOrEmpty(LogFile)) return;
+        if (string.IsNullOrEmpty(LogFile)) return "";
         bool powerCap = (s.Throttle & 0x1UL) != 0;
         bool hwSlow = (s.Throttle & 0x2UL) != 0;
         bool thermal = (s.Throttle & 0x4UL) != 0;
@@ -63,6 +63,7 @@ public sealed class Storage
             powerCap ? 1 : 0, hwSlow ? 1 : 0, thermal ? 1 : 0, text,
             s.CpuTemp, s.CpuMhz, s.CpuLoad, s.ActiveCores, s.TotalCores, (int)s.RamPct);
         try { File.AppendAllText(LogFile, line + Environment.NewLine, new UTF8Encoding(true)); } catch { }
+        return line;
     }
 
     // ── history store (survives restarts) ───────────────────────

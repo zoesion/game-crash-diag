@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -19,14 +19,22 @@ internal static class Program
         bool selfTest = false;
         int collectSeconds = 0;
         bool uiTest = false;
+        bool testDetect = false;
+        bool testReport = false;
+        bool crashTest = false;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "-SelfTest") selfTest = true;
             else if (args[i] == "-UiTest") uiTest = true;
+            else if (args[i] == "-TestDetect") testDetect = true;
+            else if (args[i] == "-TestReport") testReport = true;
+            else if (args[i] == "-TestCrashFlow") crashTest = true;
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
         }
 
         if (selfTest || collectSeconds > 0) return Headless(selfTest, collectSeconds);
+        if (testDetect) return DetectTest();
+        if (testReport) return ReportTest();
 
         // instance identity: a dev copy carries an instance.txt next to the exe
         string tag = "";
@@ -58,8 +66,56 @@ internal static class Program
                 return 0;
             }
 
+            if (crashTest)
+            {
+                using (var f = new MainForm(Root, tag))
+                {
+                    Console.WriteLine(f.RunCrashFlowTest());
+                }
+                return 0;
+            }
+
             Application.Run(new MainForm(Root, tag));
         }
+        return 0;
+    }
+
+    private static int DetectTest()
+    {
+        var hit = GameDetect.Find();
+        if (hit == null)
+        {
+            Console.WriteLine("未检测到游戏（符合预期：当前前台只有浏览器/终端）");
+        }
+        else
+        {
+            Console.WriteLine(string.Format("检测到: {0} (PID {1}, {2:N0} MB) {3}",
+                hit.Name, hit.Pid, hit.Memory / 1048576.0, hit.Path));
+        }
+        return 0;
+    }
+
+    private static int ReportTest()
+    {
+        var input = new CrashReport.ReportInput();
+        input.IsCrash = true;
+        input.Reason = "应用错误事件 1000";
+        input.GameName = "bf6";
+        input.Category = "bf6";
+        input.StartTime = DateTime.Now.AddMinutes(-12);
+        input.ExitTime = DateTime.Now;
+        input.TelemetryFile = "(测试数据)";
+        var rnd = new Random(7);
+        for (int i = 0; i < 50; i++)
+        {
+            input.TailRows.Add(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "04:0{0}:0{1},{2:0.0},{3:0},{4},8001,{5},20,9000,P0,0x1,0,0,0,正常,{6:0.0},3800,30,8,21,45",
+                i / 6, i % 6, 60 + rnd.Next(0, 15), 100 + rnd.Next(0, 60), 1800,
+                70 + rnd.Next(0, 20), 30 + rnd.Next(0, 40)));
+        }
+        string path = CrashReport.Write(Root, input);
+        Console.WriteLine("报告已生成: " + path);
+        foreach (string line in File.ReadAllLines(path)) Console.WriteLine("  " + line);
         return 0;
     }
 
