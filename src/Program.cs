@@ -43,6 +43,14 @@ internal static class Program
         get { return Path.GetDirectoryName(Application.ExecutablePath); }
     }
 
+    // Self tests must never write into the real reports folder
+    private static string TestReportRoot()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "gcd-test-reports");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -284,7 +292,7 @@ internal static class Program
                 i / 6, i % 6, 60 + rnd.Next(0, 15), 100 + rnd.Next(0, 60), 1800,
                 70 + rnd.Next(0, 20), 30 + rnd.Next(0, 40)));
         }
-        string path = CrashReport.Write(Root, input);
+        string path = CrashReport.Write(TestReportRoot(), input);
         Say("报告已生成: " + path);
         foreach (string line in File.ReadAllLines(path)) Say("  " + line);
         return 0;

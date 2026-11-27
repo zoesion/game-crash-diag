@@ -653,7 +653,7 @@ public sealed class MainForm : Form
                 GameCpuAvg = _gameCount > 0 ? _gameCpuSum / _gameCount : 0,
                 Stats = _stats
             };
-            string report = CrashReport.Write(_root, input);
+            string report = CrashReport.Write(Path.Combine(Path.GetTempPath(), "gcd-test-reports"), input);
             string snap = verdict.IsCrash
                 ? CrashReport.SaveSnapshot(_root, _bmpFront, _bmpCpuFront)
                 : "";
@@ -735,7 +735,7 @@ public sealed class MainForm : Form
             TelemetryFile = _store.LogFile,
             TailRows = new List<string>(_tail)
         };
-        string report = CrashReport.Write(_root, input);
+        string report = CrashReport.Write(Path.Combine(Path.GetTempPath(), "gcd-test-reports"), input);
         sb.AppendLine("判定: " + (verdict.IsCrash ? "崩溃" : "正常退出") + "  依据: " + verdict.Reason);
         sb.AppendLine("报告: " + report);
         _markers.Add(new Marker { Time = DateTime.Now, Kind = verdict.IsCrash ? "crash" : "gap" });
