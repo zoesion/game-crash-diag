@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -1121,11 +1121,17 @@ public sealed class MainForm : Form
 
     private string ThrottleText(ulong mask)
     {
-        // P8/P5 待机时 NVIDIA 也会置功耗墙标志位，这时显示"待机"更有意义
+        // P8/P5 待机时 NVIDIA 也会置位，这时显示"待机"更有意义
         if (_lastClock < 600 && _lastUtil < 5) return I18n.T("ThrottleIdle", "待机");
-        if ((mask & 0x1UL) != 0) return I18n.T("ThrottlePower", "功耗墙");
-        if ((mask & 0x4UL) != 0) return I18n.T("ThrottleThermal", "温度墙");
-        if ((mask & 0x2UL) != 0) return I18n.T("ThrottleHw", "硬件降频");
+        // nvmlClocksEventReasons 的真实位定义：
+        //   0x1  GpuIdle            0x2  ApplicationsClocks
+        //   0x4  SwPowerCap         0x8  HwSlowdown
+        //   0x10 SyncBoost          0x20 SwThermalSlowdown
+        //   0x40 HwThermalSlowdown  0x80 HwPowerBrake
+        if ((mask & 0x40UL) != 0 || (mask & 0x20UL) != 0) return I18n.T("ThrottleThermal", "温度墙");
+        if ((mask & 0x4UL) != 0) return I18n.T("ThrottlePower", "功耗墙");
+        if ((mask & 0x8UL) != 0 || (mask & 0x80UL) != 0) return I18n.T("ThrottleHw", "硬件降频");
+        if ((mask & 0x2UL) != 0) return I18n.T("ThrottleApp", "应用限频");
         return I18n.T("ThrottleNone", "正常");
     }
 

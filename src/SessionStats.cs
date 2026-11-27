@@ -65,8 +65,9 @@ public sealed class SessionStats
             if (cpuFreq < CpuFreqMin) CpuFreqMin = cpuFreq;
         }
         if (activeCores > ActiveCoresMax) ActiveCoresMax = activeCores;
-        if ((throttle & 0x4UL) != 0) TempWallSamples++;
-        if ((throttle & 0x1UL) != 0) PowerWallSamples++;
+        // 0x20 SwThermal / 0x40 HwThermal 才是温度墙；0x4 是 SwPowerCap
+        if ((throttle & 0x40UL) != 0 || (throttle & 0x20UL) != 0) TempWallSamples++;
+        if ((throttle & 0x4UL) != 0) PowerWallSamples++;
     }
 
     public double GpuTempAvg { get { return Samples > 0 ? GpuTempSum / Samples : 0; } }
@@ -90,22 +91,27 @@ public sealed class SessionStats
         double pctHotGpu = HotGpuSamples * 100.0 / Samples;
         double pctTempWall = TempWallSamples * 100.0 / Samples;
 
-        if (pctHotCpu90 >= 40 && pctHotCpu < 30)
-            list.Add(string.Format("CPU 有 {0:0}% 的时间在 90°C 以上（最高 {1:0}°C），属于偏高，但还没到降频区", pctHotCpu90, CpuTempMax));
         if (pctHotCpu >= 30)
             list.Add(string.Format("CPU 有 {0:0}% 的时间在 95°C 以上（最高 {1:0}°C），长时间高温会触发降频", pctHotCpu, CpuTempMax));
+        else if (pctHotCpu90 >= 40)
+            list.Add(string.Format("CPU 有 {0:0}% 的时间在 90°C 以上（最高 {1:0}°C），属于偏高，但还没到降频区", pctHotCpu90, CpuTempMax));
         else if (CpuTempMax >= 95)
             list.Add(string.Format("CPU 最高到过 {0:0}°C，属于该型号的正常上限附近，注意散热", CpuTempMax));
         if (pctTempWall >= 10)
             list.Add(string.Format("GPU 有 {0:0}% 的时间撞到温度墙而降频（{1} / {2} 次采样），可能出现掉帧", pctTempWall, TempWallSamples, Samples));
         else if (pctHotGpu >= 20)
             list.Add(string.Format("GPU 有 {0:0}% 的时间在 85°C 以上（最高 {1:0}°C）", pctHotGpu, GpuTempMax));
+        double pctPowerWall = PowerWallSamples * 100.0 / Samples;
+        if (pctPowerWall >= 50 && pctTempWall < 20)
+            list.Add(string.Format("GPU 有 {0:0}% 的时间受功耗墙限制（{1:0}°C，说明散热没问题，是功耗上限）", pctPowerWall, GpuTempMax));
+        else if (pctPowerWall >= 50)
+            list.Add(string.Format("GPU 有 {0:0}% 的时间受功耗墙限制", pctPowerWall));
         if (VramMax >= 15500)
             list.Add(string.Format("显存峰值 {0:N0} MB，非常接近 16 GB 上限，贴图设最高容易爆显存", VramMax));
         else if (VramTightSamples > Samples * 0.2)
             list.Add(string.Format("显存有 {0:0}% 的时间在 15 GB 以上（峰值 {1:N0} MB）", VramTightSamples * 100.0 / Samples, VramMax));
 
-        if (pctHotCpu < 30 && pctHotGpu < 20 && VramMax < 15500 && pctTempWall < 10)
+        if (pctHotCpu < 30 && pctHotCpu90 < 40 && pctHotGpu < 20 && VramMax < 15500 && pctTempWall < 10)
             list.Add("温度和显存都在安全范围，没有观察到降频或爆显存");
 
         if (duration.TotalMinutes < 3)
@@ -120,13 +126,18 @@ public sealed class SessionStats
         var list = new List<string>();
         if (Samples == 0) return list;
         double pctHotCpu = HotCpuSamples * 100.0 / Samples;
-        if (pctHotCpu >= 30 || CpuTempMax >= 97)
+        double pctHotCpu90 = HotCpu90Samples * 100.0 / Samples;
+        if (pctHotCpu >= 30 || pctHotCpu90 >= 40 || CpuTempMax >= 97)
         {
             list.Add("CPU 温度偏高：垫高机身或加散热底座，电源模式改「平衡」，考虑用 ThrottleStop 降压 -100mV");
         }
         if (TempWallSamples > Samples * 0.1)
         {
             list.Add("GPU 常撞温度墙：清理风扇灰尘，或用 MSI Afterburner 把功耗墙下调 5~10%，换取更稳的频率");
+        }
+        if (PowerWallSamples > Samples * 0.5 && TempWallSamples < Samples * 0.2)
+        {
+            list.Add("GPU 受功耗墙限制为主（温度不高）：若要更高帧，可在 MSI Center 调高显卡功耗上限或开启 Dynamic Boost");
         }
         if (VramMax >= 15500)
             list.Add("显存接近上限：把材质质量降一档，关闭高分辨率贴图，避免爆显存导致的卡顿或崩溃");
