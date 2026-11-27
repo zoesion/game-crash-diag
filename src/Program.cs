@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -7,6 +7,11 @@ using System.Windows.Forms;
 
 internal static class Program
 {
+    public static string AwarenessInfo()
+    {
+        try { return Native.GetAwareness(); } catch { return "?"; }
+    }
+
     private static string Root
     {
         get { return Path.GetDirectoryName(Application.ExecutablePath); }
@@ -55,9 +60,11 @@ internal static class Program
         {
             if (!created) return 0;
 
+            // DPI awareness must be set before any user32 call, otherwise the window is bitmap-scaled
+            try { Native.SetProcessDPIAware(); } catch { }
+            if (uiTest) Console.WriteLine("DPI awareness: " + Native.GetAwareness());
             I18n.Load(Path.Combine(Root, "lang"), "zh-CN");
             try { Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); } catch { }
-            try { Native.SetProcessDPIAware(); } catch { }
 
             if (uiTest)
             {
@@ -66,6 +73,11 @@ internal static class Program
                     Console.WriteLine("UI 自检通过");
                     Console.WriteLine("  控件数: " + f.Controls.Count);
                     Console.WriteLine("  标题: " + f.Text);
+                    Console.WriteLine("  DPI 缩放: " + f.DpiScale);
+                    var scr = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
+                    Console.WriteLine("  屏幕(逻辑): " + scr.Width + "x" + scr.Height);
+                    using (var g2 = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
+                        Console.WriteLine("  桌面 DC DPI: " + g2.DpiX);
                 }
                 return 0;
             }
@@ -191,11 +203,25 @@ internal static class Program
 
 internal static class Native
 {
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetProcessDPIAwareNative();
+
     [System.Runtime.InteropServices.DllImport("shcore.dll")]
-    private static extern int SetProcessDpiAwareness(int value);
+    private static extern int GetProcessDpiAwareness(IntPtr process, out int value);
 
     public static void SetProcessDPIAware()
     {
-        try { SetProcessDpiAwareness(1); } catch { }
+        try { SetProcessDPIAwareNative(); } catch { }
+    }
+
+    public static string GetAwareness()
+    {
+        try
+        {
+            int v;
+            GetProcessDpiAwareness(IntPtr.Zero, out v);
+            return v.ToString();
+        }
+        catch (Exception ex) { return "unknown: " + ex.Message; }
     }
 }

@@ -50,6 +50,7 @@ public sealed class MainForm : Form
 
     // controls
     private Label _lblGpuName, _lblStatus, _lblDetail, _lblStats, _lblHint, _lblVer, _lblCpuName;
+    private Label _tip;
     private Label[] _unitLabels;
     private Label _valTemp, _valPower, _valClock, _valUtil;
     private Label _valCpuTemp, _valCpuClock, _valCpuUtil, _valCpuCores;
@@ -75,7 +76,11 @@ public sealed class MainForm : Form
     {
         _root = root;
         _tag = tag;
-        using (Graphics g = CreateGraphics()) _dpi = g.DpiX / 96f;
+        // 先关掉自动缩放，再设尺寸；否则 WinForms 会按 DPI 反向缩放一次
+        AutoScaleMode = AutoScaleMode.None;
+        AutoScaleDimensions = new SizeF(96f, 96f);
+        // 必须在有窗口句柄/桌面 DC 上取 DPI，控件未创建时拿到的是 96
+        using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) _dpi = g.DpiX / 96f;
         if (_dpi < 1f) _dpi = 1f;
 
         _store = new Storage(root);
@@ -86,7 +91,6 @@ public sealed class MainForm : Form
         ForeColor = CText;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
-        AutoScaleMode = AutoScaleMode.None;
         DoubleBuffered = true;
         Font = new Font("Microsoft YaHei UI", 9f);
 
@@ -97,8 +101,12 @@ public sealed class MainForm : Form
         _timer = new Timer();
         _timer.Interval = 500;
         _timer.Tick += (s, e) => Tick();
+
+
         Load += (s, e) =>
         {
+            // 句柄创建后 WinForms 会按 DPI 再缩放一次，这里强制回到设计尺寸
+            if (ClientSize.Width != S(760)) ClientSize = new Size(S(760), S(620));
             if (startHidden) BeginInvoke(new Action(HideToTray));
             _cpu.Prime();
             RestoreHistory();
@@ -108,6 +116,8 @@ public sealed class MainForm : Form
         FormClosing += OnClosing;
         Resize += (s, e) => { if (WindowState == FormWindowState.Minimized) HideToTray(); };
     }
+
+    public float DpiScale { get { return _dpi; } }
 
     private int S(float v) { return (int)Math.Round(v * _dpi); }
 
@@ -124,13 +134,13 @@ public sealed class MainForm : Form
         btnMenu.Bounds = new Rectangle(S(6), S(8), S(38), S(34));
         Controls.Add(btnMenu);
 
-        _lblGpuName = MakeLabel("GPU", new Point(S(52), S(6)), 11f, CText, true);
+        _lblGpuName = MakeLabel("GPU", new Point(S(52), S(6)), 11f, CDim, true);
         _lblStatus = MakeLabel("● --", new Point(S(620), S(10)), 9f, CAccent, false);
         _lblStatus.AutoSize = false;
         _lblStatus.Size = new Size(S(134), S(22));
         _lblStatus.TextAlign = ContentAlignment.MiddleRight;
 
-        _lblCpuName = MakeLabel("CPU", new Point(S(6), S(250)), 10f, CText, true);
+        _lblCpuName = MakeLabel("CPU", new Point(S(6), S(250)), 10f, CDim, true);
 
         // GPU cards
         var cardTemp = MakeCard(S(6), S(66));
@@ -160,8 +170,8 @@ public sealed class MainForm : Form
         AddCardText(cardCpuUtil, I18n.T("CardCpuUtil", "CPU 占用"), "%", 150);
         AddCardText(cardCores, I18n.T("CardCores", "活跃核心"), "", 150);
 
-        _chart = MakeChart(S(6), S(146));
-        _cpuChart = MakeChart(S(6), S(350));
+        _chart = MakeChart(S(6), S(146), true);
+        _cpuChart = MakeChart(S(6), S(350), false);
 
         // scrollbar
         _barTrack = new Panel();
@@ -177,6 +187,16 @@ public sealed class MainForm : Form
         _lblStats = MakeLabel("", new Point(S(6), S(494)), 9f, CDim, false);
         _lblHint = MakeLabel("", new Point(S(6), S(518)), 9f, CDim, false);
         _lblVer = MakeLabel("", new Point(S(6), S(586)), 8f, Color.FromArgb(96, 96, 108), false);
+
+        _tip = new Label();
+        _tip.AutoSize = true;
+        _tip.Visible = false;
+        _tip.BackColor = Color.FromArgb(44, 44, 52);
+        _tip.ForeColor = Color.FromArgb(226, 226, 234);
+        _tip.Font = new Font("Microsoft YaHei UI", 9f);
+        _tip.Padding = new Padding(S(6), S(3), S(6), S(3));
+        _tip.BorderStyle = BorderStyle.FixedSingle;
+        Controls.Add(_tip);
 
         _menu = new ContextMenuStrip();
         var miLog = _menu.Items.Add(I18n.T("MenuLogs", "打开数据目录"));
@@ -268,20 +288,29 @@ public sealed class MainForm : Form
         }
     }
 
-    private PictureBox MakeChart(int x, int y)
+    private PictureBox MakeChart(int x, int y, bool isGpu)
     {
         var p = new PictureBox();
         p.Bounds = new Rectangle(x, y, S(748), S(96));
         p.BackColor = CCard;
         p.SizeMode = PictureBoxSizeMode.Normal;
-        p.MouseMove += (s, e) => OnChartHover(p, e, true);
-        p.MouseLeave += (s, e) => { _hoverGpu = -1; _hoverCpu = -1; Draw(); };
+        p.MouseMove += (s, e) => OnChartHover(p, e, isGpu);
+        p.MouseLeave += (s, e) => { _hoverGpu = -1; _hoverCpu = -1; if (_tip != null) _tip.Visible = false; Draw(); };
         Controls.Add(p);
         return p;
     }
 
     // ── data loop ───────────────────────────────────────────────
     private void Tick()
+    {
+        try { TickCore(); }
+        catch (Exception ex)
+        {
+            try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "v6-tick-error.txt"), DateTime.Now.ToString("HH:mm:ss") + " " + ex); } catch { }
+        }
+    }
+
+    private void TickCore()
     {
         var s = TakeSample();
         if (s.GpuTemp <= 0 && s.CpuMhz <= 0) { _lblStatus.Text = "✕ 读取失败"; _lblStatus.ForeColor = CBad; return; }
@@ -776,6 +805,37 @@ public sealed class MainForm : Form
         if (frac < 0) frac = 0; if (frac > 1) frac = 1;
         int idx = (int)Math.Round(frac * (count - 1));
         if (isGpu) _hoverGpu = idx; else _hoverCpu = idx;
+
+        // 提示框：贴着鼠标显示该点的数值与时刻
+        int abs = from + idx;
+        string txt;
+        if (isGpu)
+        {
+            double t = abs < _gTemp.Count ? _gTemp[abs] : 0;
+            double pw = abs < _gPower.Count ? _gPower[abs] : 0;
+            string when = abs < _tTime.Count ? _tTime[abs].ToString("HH:mm:ss") : "";
+            txt = string.Format("温度 {0:0.0}°C   功耗 {1:0}W   {2}", t, pw, when);
+        }
+        else
+        {
+            double t = abs < _cTemp.Count ? _cTemp[abs] : 0;
+            double f2 = abs < _cFreq.Count ? _cFreq[abs] : 0;
+            string when = abs < _cTime.Count ? _cTime[abs].ToString("HH:mm:ss") : "";
+            txt = string.Format("温度 {0:0}°C   频率 {1:0}MHz   {2}", t, f2, when);
+        }
+        _tip.Text = txt;
+        Size sz = TextRenderer.MeasureText(txt, _tip.Font);
+        int tipW = sz.Width + S(14);
+        int tipH = sz.Height + S(8);
+        int tipX = box.Left + e.X + S(14);
+        if (tipX + tipW > ClientSize.Width - S(4)) tipX = box.Left + e.X - tipW - S(10);
+        if (tipX < S(2)) tipX = S(2);
+        int tipY = box.Top + e.Y - tipH - S(6);
+        if (tipY < S(2)) tipY = box.Top + e.Y + S(18);
+        _tip.Bounds = new Rectangle(tipX, tipY, tipW, tipH);
+        _tip.Visible = true;
+        _tip.BringToFront();
+
         Draw();
     }
 
