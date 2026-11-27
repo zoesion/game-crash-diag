@@ -22,6 +22,8 @@ public sealed class MainForm : Form
     private static readonly Color CPower = Color.FromArgb(90, 155, 220);
     private static readonly Color CFreq = Color.FromArgb(150, 130, 220);
 
+    public const string AppVersion = "v6.0";
+
     private readonly float _dpi;
     private readonly string _root;
     private readonly string _tag;
@@ -250,6 +252,8 @@ public sealed class MainForm : Form
             var dlgCodes = new TextDialog("错误码对照表", ErrorCodes.Table(), false, null);
             dlgCodes.ShowDialog(this);
         };
+        var miUpdate = _menu.Items.Add(I18n.T("MenuUpdate", "检查更新"));
+        miUpdate.Click += (s, e) => CheckUpdates();
         var miUninst = _menu.Items.Add(I18n.T("MenuUninst", "卸载本程序"));
         miUninst.Click += (s, e) => RunUninstaller();
         var miAbout = _menu.Items.Add(I18n.T("MenuAbout", "关于"));
@@ -1086,6 +1090,41 @@ public sealed class MainForm : Form
             Process.Start(psi);
         }
         catch (Exception ex) { MessageBox.Show("启动失败: " + ex.Message, Text); }
+    }
+
+    private void CheckUpdates()
+    {
+        _lblHint.Text = "正在检查更新...";
+        _lblHint.ForeColor = CDim;
+        var worker = new System.ComponentModel.BackgroundWorker();
+        worker.DoWork += (s, e) => { e.Result = Updater.Check(AppVersion); };
+        worker.RunWorkerCompleted += (s, e) =>
+        {
+            var r = e.Result as Updater.Result;
+            if (r == null || !r.Ok)
+            {
+                _lblHint.Text = "检查更新失败：" + (r != null ? r.Error : "未知错误");
+                _lblHint.ForeColor = CWarn;
+                MessageBox.Show("检查更新失败：\r\n\r\n" + (r != null ? r.Error : "未知错误") +
+                    "\r\n\r\n可以手动打开下载页：\r\n" + Updater.PageUrl, Text);
+                return;
+            }
+            _lblHint.Text = "已检查更新：最新 " + r.LatestTag + "，当前 " + AppVersion;
+            _lblHint.ForeColor = CDim;
+            if (!r.IsNewer)
+            {
+                MessageBox.Show("已经是最新版本。\r\n\r\n当前：" + AppVersion + "\r\n最新：" + r.LatestTag, Text,
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            string msg = "发现新版本 " + r.LatestTag + "\r\n\r\n当前：" + AppVersion +
+                         "\r\n最新：" + r.LatestTag + "\r\n发布：" + r.PublishedAt + "\r\n\r\n要打开下载页吗？";
+            if (MessageBox.Show(msg, Text, MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+            {
+                try { Process.Start(r.HtmlUrl); } catch { }
+            }
+        };
+        worker.RunWorkerAsync();
     }
 
     private void RunUninstaller()

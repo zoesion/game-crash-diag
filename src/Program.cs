@@ -30,6 +30,7 @@ internal static class Program
         bool startHidden = false;
         bool diagTest = false;
         bool codeTest = false;
+        bool updateTest = false;
         string shotPath = "";
         for (int i = 0; i < args.Length; i++)
         {
@@ -41,12 +42,14 @@ internal static class Program
             else if (args[i] == "-Tray") startHidden = true;
             else if (args[i] == "-TestDiagnosis") diagTest = true;
             else if (args[i] == "-TestCodes") codeTest = true;
+            else if (args[i] == "-TestUpdate") updateTest = true;
             else if (args[i] == "-Shot" && i + 1 < args.Length) shotPath = args[++i];
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
         }
 
         if (selfTest || collectSeconds > 0) return Headless(selfTest, collectSeconds);
         if (codeTest) return CodeTest();
+        if (updateTest) return UpdateTest();
         if (testDetect) return DetectTest();
         if (testReport) return ReportTest();
 
@@ -131,6 +134,21 @@ internal static class Program
 
             Application.Run(new MainForm(Root, tag, startHidden));
         }
+        return 0;
+    }
+
+    private static int UpdateTest()
+    {
+        Console.WriteLine("当前版本: " + MainForm.AppVersion);
+        var r = Updater.Check(MainForm.AppVersion);
+        if (!r.Ok) { Console.WriteLine("检查失败: " + r.Error); return 1; }
+        Console.WriteLine("最新版本: " + r.LatestTag + "   " + r.ReleaseName);
+        Console.WriteLine("发布时间: " + r.PublishedAt);
+        Console.WriteLine("下载页:   " + r.HtmlUrl);
+        Console.WriteLine("有新版本: " + r.IsNewer);
+        Console.WriteLine("版本比较测试: 6.02 vs 6.0 = " + Updater.CompareVersions("v6.02", "v6.0") +
+                          " ; 5.97 vs 6.0 = " + Updater.CompareVersions("v5.97", "v6.0") +
+                          " ; 6.10 vs 6.9 = " + Updater.CompareVersions("v6.10", "v6.9"));
         return 0;
     }
 
