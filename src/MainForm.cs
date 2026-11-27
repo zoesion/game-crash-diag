@@ -65,6 +65,10 @@ public sealed class MainForm : Form
     private int _hoverGpu = -1, _hoverCpu = -1;
     private int _lastHoverGpu = -1, _lastHoverCpu = -1;
     private DateTime _lastHoverDraw = DateTime.MinValue;
+    // 滚动条拖动
+    private bool _barDrag;
+    private int _barDragX;
+    private int _barDragLeft;
     private bool _exitFlag;
 
     // game mode
@@ -196,13 +200,57 @@ public sealed class MainForm : Form
 
         // scrollbar
         _barTrack = new Panel();
-        _barTrack.BackColor = Color.FromArgb(46, 46, 56);
-        _barTrack.Bounds = new Rectangle(S(6), S(452), S(748), S(10));
+        _barTrack.BackColor = Color.FromArgb(58, 58, 70);
+        _barTrack.Bounds = new Rectangle(S(6), S(450), S(748), S(12));
         _barThumb = new Panel();
-        _barThumb.BackColor = Color.FromArgb(112, 112, 126);
-        _barThumb.Bounds = new Rectangle(0, S(2), S(120), S(6));
+        _barThumb.BackColor = Color.FromArgb(134, 134, 152);
+        _barThumb.Bounds = new Rectangle(0, S(2), S(120), S(8));
         _barTrack.Controls.Add(_barThumb);
         Controls.Add(_barTrack);
+
+        // 拖动手柄
+        _barThumb.Cursor = Cursors.Hand;
+        _barThumb.MouseDown += (s, e) =>
+        {
+            _barDrag = true;
+            _barDragX = Cursor.Position.X;
+            _barDragLeft = _barThumb.Left;
+            _barThumb.BackColor = Color.FromArgb(176, 176, 196);
+        };
+        _barThumb.MouseMove += (s, e) =>
+        {
+            if (!_barDrag) return;
+            int travel = Math.Max(1, _barTrack.Width - _barThumb.Width);
+            int dx = Cursor.Position.X - _barDragX;
+            int left = _barDragLeft + dx;
+            if (left < 0) left = 0;
+            if (left > travel) left = travel;
+            _barThumb.Left = left;
+            SetShiftFromThumb();
+        };
+        _barThumb.MouseUp += (s, e) =>
+        {
+            if (!_barDrag) return;
+            _barDrag = false;
+            _barThumb.BackColor = Color.FromArgb(134, 134, 152);
+            Draw();
+        };
+
+        // 点击轨道空白处直接跳转
+        _barTrack.MouseDown += (s, e) =>
+        {
+            int travel = Math.Max(1, _barTrack.Width - _barThumb.Width);
+            int left = e.X - _barThumb.Width / 2;
+            if (left < 0) left = 0;
+            if (left > travel) left = travel;
+            _barThumb.Left = left;
+            SetShiftFromThumb();
+            Draw();
+        };
+
+        // 鼠标滚轮在图上左右翻
+        _chart.MouseWheel += (s, e) => ShiftView(e.Delta > 0 ? 1 : -1);
+        _cpuChart.MouseWheel += (s, e) => ShiftView(e.Delta > 0 ? 1 : -1);
 
         _lblDetail = MakeLabel("", new Point(S(6), S(470)), 9f, CDim, false);
         _lblStats = MakeLabel("", new Point(S(6), S(494)), 9f, CDim, false);
@@ -904,7 +952,7 @@ public sealed class MainForm : Form
         if (total <= span) { _barTrack.Visible = false; return; }
         _barTrack.Visible = true;
         int w = _barTrack.Width;
-        int tw = Math.Max(S(28), (int)Math.Round(w * (span / (double)total)));
+        int tw = Math.Max(S(60), (int)Math.Round(w * (span / (double)total)));
         if (tw > w) tw = w;
         if (_barThumb.Width != tw) _barThumb.Width = tw;
         int travel = Math.Max(0, w - tw);
@@ -912,6 +960,41 @@ public sealed class MainForm : Form
         int pos = (int)Math.Round(travel * (1 - Math.Min(1.0, _shiftPts / (double)scrollable)));
         _barThumb.Left = pos;
         _barTrack.BringToFront();
+    }
+
+    /// <summary>Thumb position -> view offset. Called while dragging or after a track click.</summary>
+    private void SetShiftFromThumb()
+    {
+        int total = _tTime.Count;
+        int span = Math.Min(_spanPts, Math.Max(1, total));
+        int scrollable = Math.Max(0, total - span);
+        int travel = Math.Max(1, _barTrack.Width - _barThumb.Width);
+        double ratio = Math.Min(1.0, Math.Max(0.0, _barThumb.Left / (double)travel));
+        _shiftPts = (int)Math.Round((1 - ratio) * scrollable);
+        if (_shiftPts < 0) _shiftPts = 0;
+        if (_shiftPts > scrollable) _shiftPts = scrollable;
+        _followLive = (_shiftPts <= 0);
+        if (!_followLive)
+        {
+            _lblHint.Text = I18n.T("HintPaused", "回看中：拖回最右侧恢复跟随（45 秒不动也会自动恢复）");
+            _lblHint.ForeColor = CDim;
+        }
+        Draw();
+    }
+
+    /// <summary>Mouse wheel paging: positive delta goes further back in time.</summary>
+    private void ShiftView(int dir)
+    {
+        int total = _tTime.Count;
+        int span = Math.Min(_spanPts, Math.Max(1, total));
+        int scrollable = Math.Max(0, total - span);
+        if (scrollable <= 0) return;
+        int step = Math.Max(1, span / 4);
+        _shiftPts += dir * step;
+        if (_shiftPts < 0) _shiftPts = 0;
+        if (_shiftPts > scrollable) _shiftPts = scrollable;
+        _followLive = (_shiftPts <= 0);
+        Draw();
     }
 
     private void OnChartHover(PictureBox box, MouseEventArgs e, bool isGpu)
@@ -1221,6 +1304,39 @@ public sealed class MainForm : Form
     {
         var dlg = new TextDialog("诊断报告 - 游戏崩溃诊断器", BuildDiagnosisText(), false, null);
         dlg.ShowDialog(this);
+    }
+
+    /// <summary>Headless check of the scrollbar maths (no mouse needed).</summary>
+    public string RunScrollTest()
+    {
+        var sb = new System.Text.StringBuilder();
+        _tTime.Clear(); _gTemp.Clear(); _gPower.Clear(); _cTime.Clear(); _cTemp.Clear(); _cFreq.Clear();
+        DateTime t0 = DateTime.Now.AddMinutes(-25);
+        for (int i = 0; i < 3000; i++)
+        {
+            DateTime t = t0.AddMilliseconds(500 * i);
+            _tTime.Add(t); _cTime.Add(t);
+            _gTemp.Add(40 + (i % 20)); _gPower.Add(100 + (i % 50));
+            _cTemp.Add(60 + (i % 15)); _cFreq.Add(3800 + (i % 300));
+        }
+        Show();
+        Application.DoEvents();
+        Draw();
+        Application.DoEvents();
+        sb.AppendLine("点数: " + _tTime.Count + "  窗口跨度: " + _spanPts + "  滚动条可见: " + _barTrack.Visible);
+        int travel = Math.Max(1, _barTrack.Width - _barThumb.Width);
+        sb.AppendLine("轨道宽 " + _barTrack.Width + "  手柄宽 " + _barThumb.Width + "  可移动 " + travel);
+        foreach (double frac in new[] { 1.0, 0.75, 0.5, 0.25, 0.0 })
+        {
+            _barThumb.Left = (int)Math.Round(travel * frac);
+            SetShiftFromThumb();
+            sb.AppendLine(string.Format("手柄 {0,4:P0} → 偏移 {1,6} 点，跟随最新={2}，窗口 {3} ~ {4}",
+                frac, _shiftPts, _followLive,
+                _tTime[Math.Max(0, _tTime.Count - _shiftPts - Math.Min(_spanPts, _tTime.Count))].ToString("HH:mm:ss"),
+                _tTime[Math.Max(0, _tTime.Count - _shiftPts - 1)].ToString("HH:mm:ss")));
+        }
+        Hide();
+        return sb.ToString();
     }
 
     /// <summary>Renders the whole window to a PNG (used by -Shot for verification).</summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -58,6 +58,7 @@ internal static class Program
         bool diagTest = false;
         bool codeTest = false;
         bool updateTest = false;
+        bool scrollTest = false;
         string shotPath = "";
         for (int i = 0; i < args.Length; i++)
         {
@@ -70,6 +71,7 @@ internal static class Program
             else if (args[i] == "-TestDiagnosis") diagTest = true;
             else if (args[i] == "-TestCodes") codeTest = true;
             else if (args[i] == "-TestUpdate") updateTest = true;
+            else if (args[i] == "-TestScroll") scrollTest = true;
             else if (args[i] == "-Shot" && i + 1 < args.Length) shotPath = args[++i];
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
         }
@@ -138,6 +140,15 @@ internal static class Program
                     f3.Hide();
                 }
                 Say("saved: " + shotPath);
+                return 0;
+            }
+
+            if (scrollTest)
+            {
+                using (var f4 = new MainForm(Root, tag))
+                {
+                    Say(f4.RunScrollTest());
+                }
                 return 0;
             }
 
