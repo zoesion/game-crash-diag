@@ -52,10 +52,11 @@ public sealed class Storage
     public string AppendCsv(Sample s)
     {
         if (string.IsNullOrEmpty(LogFile)) return "";
-        bool powerCap = (s.Throttle & 0x1UL) != 0;
-        bool hwSlow = (s.Throttle & 0x2UL) != 0;
-        bool thermal = (s.Throttle & 0x4UL) != 0;
-        string text = powerCap ? "功耗墙" : (thermal ? "温度墙" : (hwSlow ? "硬件降频" : "正常"));
+        // 真实位：0x2 AppClocks, 0x4 SwPowerCap, 0x8 HwSlowdown, 0x20 SwThermal, 0x40 HwThermal, 0x80 HwPowerBrake
+        bool powerCap = (s.Throttle & 0x4UL) != 0;
+        bool hwSlow = (s.Throttle & 0x8UL) != 0 || (s.Throttle & 0x80UL) != 0;
+        bool thermal = (s.Throttle & 0x20UL) != 0 || (s.Throttle & 0x40UL) != 0;
+        string text = thermal ? "温度墙" : (powerCap ? "功耗墙" : (hwSlow ? "硬件降频" : "正常"));
         string line = string.Format(CultureInfo.InvariantCulture,
             "{0},{1:0.00},{2:0.00},{3},{4},{5},{6},{7},{8},0x{9:X16},{10},{11},{12},{13},{14:0.0},{15},{16},{17},{18},{19}",
             s.Time.ToString("HH:mm:ss"), s.GpuTemp, s.GpuPower, s.ClockSm, s.ClockMem, s.UtilGpu, s.UtilMem,

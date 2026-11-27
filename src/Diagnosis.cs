@@ -128,9 +128,9 @@ public static class Diagnosis
 
     private static string Throttle(ulong mask)
     {
-        if ((mask & 0x1UL) != 0) return "降频 功耗墙";
-        if ((mask & 0x4UL) != 0) return "降频 温度墙";
-        if ((mask & 0x2UL) != 0) return "降频 硬件";
+        if ((mask & 0x20UL) != 0 || (mask & 0x40UL) != 0) return "降频 温度墙";
+        if ((mask & 0x4UL) != 0) return "降频 功耗墙";
+        if ((mask & 0x8UL) != 0 || (mask & 0x80UL) != 0) return "降频 硬件";
         return "降频 正常";
     }
 }
