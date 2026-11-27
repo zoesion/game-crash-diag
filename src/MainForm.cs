@@ -782,8 +782,13 @@ public sealed class MainForm : Form
             double mins = (DateTime.Now - last).TotalMinutes;
             if (mins >= 2)
             {
-                string note = mins >= 60 ? "隔 " + Math.Round(mins / 60.0, 1) + " 小时" : "隔 " + (int)mins + " 分钟";
-                _markers.Add(new Marker { Time = last, Kind = "gap", Note = note });
+                bool dead = false;
+                try { dead = CrashReport.DetectUncleanShutdown(last.AddMinutes(-2)); } catch { }
+                string note = dead ? "宕机"
+                    : (mins >= 60 ? "隔 " + Math.Round(mins / 60.0, 1) + " 小时" : "隔 " + (int)mins + " 分钟");
+                _markers.Add(new Marker { Time = last, Kind = dead ? "down" : "gap", Note = note });
+                LogLine("marker added: kind=" + (dead ? "down" : "gap") + " note=" + note);
+                try { _store.SaveMarkers(_markers); } catch { }
             }
         }
     }
@@ -913,6 +918,7 @@ public sealed class MainForm : Form
             using (var g = Graphics.FromImage(bmp))
             {
                 var font = new Font("Microsoft YaHei UI", 7f);
+                var labelRows = new List<Tuple<float, float, float>>();
                 foreach (var m in _markers)
                 {
                     DateTime t0 = _tTime[from];
@@ -940,7 +946,20 @@ public sealed class MainForm : Form
                         SizeF sz = g.MeasureString(txt, font);
                         float tx = x - sz.Width - 4;
                         if (tx < 2) tx = x + 4;
-                        g.DrawString(txt, font, brush, tx, bmp.Height - 18);
+                        // 标签避让：挨得近的标记往上错开一行，避免文字叠在一起
+                        float ty = bmp.Height - 18;
+                        for (int row = 0; row < 4; row++)
+                        {
+                            bool clash = false;
+                            foreach (var used in labelRows)
+                            {
+                                if (Math.Abs(used.Item2 - ty) < 1 && tx < used.Item3 && tx + sz.Width > used.Item1) { clash = true; break; }
+                            }
+                            if (!clash) break;
+                            ty -= 13;
+                        }
+                        labelRows.Add(new Tuple<float, float, float>(tx, ty, tx + sz.Width));
+                        g.DrawString(txt, font, brush, tx, ty);
                     }
                 }
                 font.Dispose();
@@ -1306,6 +1325,46 @@ public sealed class MainForm : Form
     {
         var dlg = new TextDialog("诊断报告 - 游戏崩溃诊断器", BuildDiagnosisText(), false, null);
         dlg.ShowDialog(this);
+    }
+
+    /// <summary>Injects the three marker kinds and renders, so the separators can be verified.</summary>
+    public string RunMarkerTest(string shotPath = "")
+    {
+        _tTime.Clear(); _gTemp.Clear(); _gPower.Clear(); _cTime.Clear(); _cTemp.Clear(); _cFreq.Clear();
+        _markers.Clear();
+        DateTime t0 = DateTime.Now.AddMinutes(-20);
+        for (int i = 0; i < 2400; i++)
+        {
+            DateTime t = t0.AddMilliseconds(500 * i);
+            _tTime.Add(t); _cTime.Add(t);
+            _gTemp.Add(45 + (i % 12)); _gPower.Add(120 + (i % 40));
+            _cTemp.Add(62 + (i % 10)); _cFreq.Add(3900 + (i % 200));
+        }
+        _markers.Add(new Marker { Time = t0.AddMinutes(4), Kind = "gap", Note = "隔 2.3 小时" });
+        _markers.Add(new Marker { Time = t0.AddMinutes(9), Kind = "crash", Note = "崩溃" });
+        _markers.Add(new Marker { Time = t0.AddMinutes(14), Kind = "down", Note = "宕机" });
+        _markers.Add(new Marker { Time = t0.AddMinutes(17), Kind = "crash", Note = "崩溃" });
+        Show();
+        Application.DoEvents();
+        Draw();
+        Application.DoEvents();
+        if (!string.IsNullOrEmpty(shotPath))
+        {
+            try
+            {
+                using (var bmp = new Bitmap(Width, Height))
+                {
+                    DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
+                    bmp.Save(shotPath, System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            catch { }
+        }
+        Hide();
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("标记数: " + _markers.Count);
+        foreach (var m in _markers) sb.AppendLine("  " + m.Time.ToString("HH:mm:ss") + "  " + m.Kind + "  " + m.Note);
+        return sb.ToString();
     }
 
     /// <summary>Headless check of the scrollbar maths (no mouse needed).</summary>

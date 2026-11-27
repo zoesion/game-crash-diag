@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
@@ -77,6 +77,25 @@ public static class CrashReport
     private static string XmlTime(DateTime t)
     {
         return t.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>True when Windows logged an unexpected shutdown (41), a bugcheck (1001) or an
+    /// unexpected power loss (6008) since the given time - i.e. the machine died, not the app.</summary>
+    public static bool DetectUncleanShutdown(DateTime since)
+    {
+        try
+        {
+            var q = new EventLogQuery("System", PathType.LogName,
+                "*[System[(EventID=41 or EventID=1001 or EventID=6008) and TimeCreated[@SystemTime>='" +
+                XmlTime(since) + "']]]");
+            using (var reader = new EventLogReader(q))
+            {
+                EventRecord rec = reader.ReadEvent();
+                if (rec != null) { rec.Dispose(); return true; }
+            }
+        }
+        catch { }
+        return false;
     }
 
     /// <summary>Gathers recent event-log text so error codes can be explained in the report.</summary>
