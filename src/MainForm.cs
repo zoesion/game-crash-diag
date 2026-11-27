@@ -618,6 +618,7 @@ public sealed class MainForm : Form
             _gameStart = hit.StartTime > DateTime.Now.AddDays(-1) ? hit.StartTime : DateTime.Now;
             _gameGpuSum = 0; _gameCpuSum = 0; _gameGpuMax = 0; _gameCount = 0;
             _stats.Reset();
+            ClearReportBanner();
             _tail.Clear();
             _store.StartLog(SafeName(hit.Name), 500);
             _lblHint.Text = string.Format(I18n.T("HintGame", "已检测到游戏 {0}，正在记录到 logs\\{1}\\"),
@@ -689,11 +690,10 @@ public sealed class MainForm : Form
                 _lblHint.ForeColor = CDim;
                 try
                 {
-                    string brief = string.Format("{0} · {1} 分钟 · CPU 最高 {2:0}°C · GPU 最高 {3:0}°C · 显存峰值 {4:N0} MB",
-                        closed.Name, Math.Round((exitTime - _gameStart).TotalMinutes), _stats.CpuTempMax, _stats.GpuTempMax, _stats.VramMax);
-                    var card = new CrashCard("游戏崩溃诊断器", brief, report, "", true);
-                    card.Show();
-                    LogLine("session card shown: " + Path.GetFileName(report));
+                    ShowReportBanner(string.Format("✓ 对局结束 · {0} · {1} 分钟 · CPU 最高 {2:0}°C · GPU 最高 {3:0}°C · 显存峰值 {4:N0} MB · 报告 {5}（点此打开）",
+                        closed.Name, Math.Round((exitTime - _gameStart).TotalMinutes),
+                        _stats.CpuTempMax, _stats.GpuTempMax, _stats.VramMax, Path.GetFileName(report)), report);
+                    LogLine("session banner shown: " + Path.GetFileName(report));
                 }
                 catch { }
             }
@@ -908,6 +908,8 @@ public sealed class MainForm : Form
         if (_bmpBack == null) return;
         int hov = -1;
         if (_hoverGpu >= 0 && _hoverGpu < n) hov = _hoverGpu;
+        ChartRenderer.MinSpanA = 10.0;    // 温度至少 10°C 跨度
+        ChartRenderer.MinSpanB = 40.0;    // 功耗至少 40W 跨度
         ChartRenderer.Render(_bmpBack, a, b, n, CCard, CGrid, CAccent, CPower, CDim, info, labA, labB, "°C", "W", hov);
         DrawMarkers(_bmpBack, from, n);
         var tmp = _bmpFront; _bmpFront = _bmpBack; _bmpBack = tmp;
@@ -929,6 +931,8 @@ public sealed class MainForm : Form
             string clabA = string.Format("{0}   最高 {1:N0}  最低 {2:N0}", I18n.T("LegendCpuTemp", "CPU 温度 °C"), Max(ca), Min(ca));
             string clabB = string.Format("{0}   最高 {1:N0}  最低 {2:N0}", I18n.T("LegendFreq", "频率 MHz"), Max(cb), Min(cb));
             int chov = (_hoverCpu >= 0 && _hoverCpu < cn) ? _hoverCpu : -1;
+            ChartRenderer.MinSpanA = 10.0;   // 温度至少 10°C
+            ChartRenderer.MinSpanB = 300.0;  // 频率至少 300MHz
             ChartRenderer.Render(_bmpCpuBack, ca, cb, cn, CCard, CGrid, CAccent, CFreq, CDim, cinfo, clabA, clabB, "°C", "MHz", chov);
             DrawMarkers(_bmpCpuBack, from, cn);
             var tmp2 = _bmpCpuFront; _bmpCpuFront = _bmpCpuBack; _bmpCpuBack = tmp2;
@@ -1379,6 +1383,47 @@ public sealed class MainForm : Form
         dlg.ShowDialog(this);
     }
 
+    /// <summary>Shows the report banner with the newest report and renders the window.</summary>
+    public string RunBannerTest(string shotPath)
+    {
+        string dir = Path.Combine(_root, "reports");
+        string newest = "";
+        try
+        {
+            var files = new DirectoryInfo(dir).GetFiles("*.txt");
+            if (files.Length > 0)
+            {
+                Array.Sort(files, delegate (FileInfo a, FileInfo b) { return b.LastWriteTime.CompareTo(a.LastWriteTime); });
+                newest = files[0].FullName;
+            }
+        }
+        catch { }
+        ShowReportBanner("✓ 对局结束 · bf6 · 35 分钟 · CPU 最高 96°C · GPU 最高 57°C · 显存峰值 8,075 MB · 报告 " +
+                         (newest != "" ? Path.GetFileName(newest) : "（无）") + "（点此打开）", newest);
+        Show();
+        Application.DoEvents();
+        System.Threading.Thread.Sleep(400);
+        Draw();
+        Application.DoEvents();
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("横幅可见: " + (_lblBanner != null && _lblBanner.Visible));
+        sb.AppendLine("横幅文字: " + (_lblBanner != null ? _lblBanner.Text : ""));
+        if (!string.IsNullOrEmpty(shotPath))
+        {
+            try
+            {
+                using (var bmp = new Bitmap(Width, Height))
+                {
+                    DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
+                    bmp.Save(shotPath, System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            catch { }
+        }
+        Hide();
+        return sb.ToString();
+    }
+
     /// <summary>Hide to tray, then restore, reporting whether the window really came back.</summary>
     public string RunTrayTest(string shotPath)
     {
@@ -1631,6 +1676,43 @@ public sealed class MainForm : Form
         _tray.BalloonTipTitle = Text;
         _tray.BalloonTipText = I18n.T("TrayBalloon", "已缩到托盘，仍在后台记录");
         try { _tray.ShowBalloonTip(1200); } catch { }
+    }
+
+    private Label _lblBanner;
+    private string _bannerReport = "";
+    private DateTime _bannerShown = DateTime.MinValue;
+
+    private void ShowReportBanner(string text, string reportPath)
+    {
+        if (_lblBanner == null)
+        {
+            _lblBanner = MakeLabel("", new Point(S(6), S(544)), 8.5f, CAccent, false);
+            _lblBanner.AutoSize = false;
+            _lblBanner.Size = new Size(S(748), S(20));
+            _lblBanner.Cursor = Cursors.Hand;
+            _lblBanner.Click += (s, e) => OpenReportFile(_bannerReport);
+            Controls.Add(_lblBanner);
+        }
+        _bannerReport = reportPath;
+        _bannerShown = DateTime.Now;
+        _lblBanner.Text = text;
+        _lblBanner.Visible = true;
+        _lblBanner.BringToFront();
+    }
+
+    private void OpenReportFile(string path)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(path) && File.Exists(path)) Process.Start("notepad.exe", "\"" + path + "\"");
+        }
+        catch (Exception ex) { MessageBox.Show("打开失败: " + ex.Message, Text); }
+    }
+
+    private void ClearReportBanner()
+    {
+        if (_lblBanner != null) _lblBanner.Visible = false;
+        _bannerReport = "";
     }
 
     private void OpenLatestReport()

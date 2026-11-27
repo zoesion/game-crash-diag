@@ -61,6 +61,7 @@ internal static class Program
         bool updateTest = false;
         bool scrollTest = false;
         bool trayTest = false;
+        bool bannerTest = false;
         string shotPath = "";
         for (int i = 0; i < args.Length; i++)
         {
@@ -76,6 +77,7 @@ internal static class Program
             else if (args[i] == "-TestUpdate") updateTest = true;
             else if (args[i] == "-TestScroll") scrollTest = true;
             else if (args[i] == "-TestTray") trayTest = true;
+            else if (args[i] == "-TestBanner") bannerTest = true;
             else if (args[i] == "-Shot" && i + 1 < args.Length) shotPath = args[++i];
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
         }
@@ -129,6 +131,15 @@ internal static class Program
                     Say("  屏幕(逻辑): " + scr.Width + "x" + scr.Height);
                     using (var g2 = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
                         Say("  桌面 DC DPI: " + g2.DpiX);
+                }
+                return 0;
+            }
+
+            if (bannerTest)
+            {
+                using (var f7 = new MainForm(Root, tag))
+                {
+                    Say(f7.RunBannerTest(shotPath));
                 }
                 return 0;
             }

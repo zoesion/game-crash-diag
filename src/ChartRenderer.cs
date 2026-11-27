@@ -7,6 +7,10 @@ using System.Drawing.Drawing2D;
 
 public static class ChartRenderer
 {
+    /// <summary>Minimum Y span for the primary/secondary series so small noise is not magnified.</summary>
+    public static double MinSpanA = 10.0;
+    public static double MinSpanB = 10.0;
+
     public static int LastPointCount = 0;
 
     /// <summary>
@@ -100,15 +104,31 @@ public static class ChartRenderer
                 if (vb < minB) minB = vb;
             }
 
-            // 主曲线刻度
+            // 主曲线刻度（最小跨度保护：1°C 的抖动不该被放大成满屏锯齿）
             double spanA = maxA - minA;
             if (spanA < 1e-6) { maxA = minA + 1; spanA = 1; }
+            double minSpanA = MinSpanA > 0 ? MinSpanA : 10.0;
+            if (spanA < minSpanA)
+            {
+                double mid = (maxA + minA) / 2;
+                maxA = mid + minSpanA / 2;
+                minA = mid - minSpanA / 2;
+                spanA = minSpanA;
+            }
             double padA = spanA * 0.15;
             double loA = minA - padA, hiA = maxA + padA;
 
             // 副曲线刻度
             double spanB = maxB - minB;
             if (spanB < 1e-6) { maxB = minB + 1; spanB = 1; }
+            double minSpanB = MinSpanB > 0 ? MinSpanB : 10.0;
+            if (spanB < minSpanB)
+            {
+                double midB = (maxB + minB) / 2;
+                maxB = midB + minSpanB / 2;
+                minB = midB - minSpanB / 2;
+                spanB = minSpanB;
+            }
             double padB = spanB * 0.15;
             double loB = Math.Max(0, minB - padB), hiB = maxB + padB;
             if (hiB - loB < 1e-6) hiB = loB + 1;
