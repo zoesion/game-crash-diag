@@ -115,6 +115,7 @@ public sealed class MainForm : Form
         ErrorCodes.Load(_root, I18n.Code);
         BuildUi();
         LoadRules();
+        LoadLastSessionBanner();
         ApplyDarkTitleBar();
 
         // 启动 4 秒后把托盘图标设为"固定显示"，否则 Windows 11 会把它塞进隐藏区
@@ -690,6 +691,8 @@ public sealed class MainForm : Form
                 _lblHint.ForeColor = CDim;
                 try
                 {
+                    SaveLastSession(closed.Name, (exitTime - _gameStart).TotalMinutes,
+                        _stats.CpuTempMax, _stats.GpuTempMax, _stats.VramMax, report);
                     ShowReportBanner(string.Format("✓ 对局结束 · {0} · {1} 分钟 · CPU 最高 {2:0}°C · GPU 最高 {3:0}°C · 显存峰值 {4:N0} MB · 报告 {5}（点此打开）",
                         closed.Name, Math.Round((exitTime - _gameStart).TotalMinutes),
                         _stats.CpuTempMax, _stats.GpuTempMax, _stats.VramMax, Path.GetFileName(report)), report);
@@ -1548,8 +1551,30 @@ public sealed class MainForm : Form
         catch { }
     }
 
+    public string LastSessionPath = "";
+
     public string BuildDiagnosisText()
     {
+        var head = new System.Text.StringBuilder();
+        try
+        {
+            if (File.Exists(LastSessionFile))
+            {
+                string[] lp = File.ReadAllText(LastSessionFile, System.Text.Encoding.UTF8).Split('|');
+                if (lp.Length >= 7 && File.Exists(lp[6]))
+                {
+                    DateTime wt;
+                    string when = DateTime.TryParse(lp[0], out wt) ? wt.ToString("MM-dd HH:mm") : lp[0];
+                    head.AppendLine("【上一次对局】");
+                    head.AppendLine(string.Format("  {0}  {1}  {2} 分钟   CPU 最高 {3}°C   GPU 最高 {4}°C   显存峰值 {5} MB",
+                        when, lp[1], lp[2], lp[3], lp[4], lp[5]));
+                    head.AppendLine("  报告: " + lp[6]);
+                    head.AppendLine();
+                    LastSessionPath = lp[6];
+                }
+            }
+        }
+        catch { }
         _cpu.Prime();
         System.Threading.Thread.Sleep(350);
         var d = new Diagnosis.Input();
@@ -1576,7 +1601,7 @@ public sealed class MainForm : Form
         d.IdleCpuTemp = _idleCount > 0 ? _idleCpuSum / _idleCount : 0;
 
         string text = Diagnosis.Build(d);
-        return text;
+        return text + Environment.NewLine + head.ToString();
     }
 
     private string DriverVersion()
@@ -1700,6 +1725,37 @@ public sealed class MainForm : Form
         _lblBanner.BringToFront();
     }
 
+    private string LastSessionFile { get { return Path.Combine(_root, "data", "last-session.txt"); } }
+
+    private void SaveLastSession(string game, double minutes, double cpuMax, double gpuMax, double vramMax, string report)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(_root, "data"));
+            File.WriteAllText(LastSessionFile,
+                DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "|" + game + "|" + Math.Round(minutes) + "|" +
+                Math.Round(cpuMax) + "|" + Math.Round(gpuMax) + "|" + Math.Round(vramMax) + "|" + report,
+                new System.Text.UTF8Encoding(false));
+        }
+        catch { }
+    }
+
+    private void LoadLastSessionBanner()
+    {
+        try
+        {
+            if (!File.Exists(LastSessionFile)) return;
+            string[] p = File.ReadAllText(LastSessionFile, System.Text.Encoding.UTF8).Split('|');
+            if (p.Length < 7) return;
+            string when = p[0], game = p[1], report = p[6];
+            if (!File.Exists(report)) return;
+            DateTime tt;
+            string clock = DateTime.TryParse(when, out tt) ? tt.ToString("MM-dd HH:mm") : when;
+            ShowReportBanner(string.Format("上一次对局 · {0} · {1} · {2} 分钟 · CPU {3}°C · GPU {4}°C · 报告 {5}（点此打开）",
+                clock, game, p[2], p[3], p[4], Path.GetFileName(report)), report);
+        }
+        catch { }
+    }
     private void OpenReportFile(string path)
     {
         try
