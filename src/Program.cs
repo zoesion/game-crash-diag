@@ -132,6 +132,10 @@ internal static class Program
                 return 0;
             }
 
+            // 全局兜底：任何未处理异常都写日志，避免进程悄无声息消失
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (s, e) => LogFatal("ThreadException", e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => LogFatal("UnhandledException", e.ExceptionObject as Exception);
             Application.Run(new MainForm(Root, tag, startHidden));
         }
         return 0;
@@ -207,6 +211,17 @@ internal static class Program
         Console.WriteLine("报告已生成: " + path);
         foreach (string line in File.ReadAllLines(path)) Console.WriteLine("  " + line);
         return 0;
+    }
+
+    public static void LogFatal(string kind, Exception ex)
+    {
+        try
+        {
+            string path = Path.Combine(Path.GetTempPath(), "v6-crash.txt");
+            File.AppendAllText(path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + kind + Environment.NewLine +
+                (ex != null ? ex.ToString() : "(null)") + Environment.NewLine + Environment.NewLine, Encoding.UTF8);
+        }
+        catch { }
     }
 
     private static int Headless(bool selfTest, int collectSeconds)

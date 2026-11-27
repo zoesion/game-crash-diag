@@ -111,11 +111,18 @@ public sealed class MainForm : Form
         LoadRules();
         ApplyDarkTitleBar();
 
+        // 启动 4 秒后把托盘图标设为"固定显示"，否则 Windows 11 会把它塞进隐藏区
+        var promote = new Timer();
+        promote.Interval = 4000;
+        promote.Tick += (s, e) => { promote.Stop(); promote.Dispose(); PromoteTrayIcon(); };
+        promote.Start();
+
         _timer = new Timer();
         _timer.Interval = 500;
         _timer.Tick += (s, e) => Tick();
 
 
+        LogLine("form load, tag=" + _tag);
         Load += (s, e) =>
         {
             // 句柄创建后 WinForms 会按 DPI 再缩放一次，这里强制回到设计尺寸
@@ -264,7 +271,22 @@ public sealed class MainForm : Form
         btnMenu.Click += (s, e) => _menu.Show(btnMenu, new Point(0, btnMenu.Height));
 
         _tray = new NotifyIcon();
-        try { _tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        try
+        {
+            string icoFile = Path.Combine(_root, "app.ico");
+            if (File.Exists(icoFile)) _tray.Icon = new Icon(icoFile);
+        }
+        catch { }
+        if (_tray.Icon == null)
+        {
+            try { _tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        }
+        if (_tray.Icon == null)
+        {
+            _tray.Icon = SystemIcons.Application;
+            LogLine("tray icon fallback to system icon");
+        }
+        LogLine("tray initialised, icon=" + (_tray.Icon != null ? _tray.Icon.Width + "x" + _tray.Icon.Height : "null"));
         _tray.Text = Text;
         _tray.Visible = true;
         _tray.DoubleClick += (s, e) => ShowFromTray();
@@ -357,6 +379,25 @@ public sealed class MainForm : Form
         }
     }
 
+    private static readonly object _logLock = new object();
+    private DateTime _lastBeat = DateTime.MinValue;
+
+    private void LogLine(string msg)
+    {
+        try
+        {
+            lock (_logLock)
+            {
+                string dir = Path.Combine(_root, "data");
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, "session.log"),
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + msg + Environment.NewLine,
+                    new System.Text.UTF8Encoding(false));
+            }
+        }
+        catch { }
+    }
+
     private void TickCore()
     {
         var s = TakeSample();
@@ -426,6 +467,12 @@ public sealed class MainForm : Form
         _lblStatus.Text = "● " + I18n.T("StatusRec", "记录中");
         _lblStatus.ForeColor = CAccent;
         _lblHint.Text = I18n.T("HintNoGame", "未检测到游戏，正在做系统监控（logs\\system\\）");
+
+        if ((DateTime.Now - _lastBeat).TotalSeconds >= 60)
+        {
+            _lastBeat = DateTime.Now;
+            LogLine("alive samples=" + _sessionCount + " mem=" + (Environment.WorkingSet / 1048576) + "MB");
+        }
 
         if (_followLive) _shiftPts = 0;
         Draw();
@@ -1286,6 +1333,34 @@ public sealed class MainForm : Form
         catch (Exception ex) { MessageBox.Show("修改失败: " + ex.Message, Text); }
     }
 
+    private void PromoteTrayIcon()
+    {
+        try
+        {
+            using (var baseKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Control Panel\NotifyIconSettings", true))
+            {
+                if (baseKey == null) return;
+                foreach (string name in baseKey.GetSubKeyNames())
+                {
+                    using (var sub = baseKey.OpenSubKey(name, true))
+                    {
+                        if (sub == null) continue;
+                        string exe = sub.GetValue("ExecutablePath") as string;
+                        if (exe == null) continue;
+                        if (!string.Equals(exe, Application.ExecutablePath, StringComparison.OrdinalIgnoreCase)) continue;
+                        object cur = sub.GetValue("IsPromoted");
+                        if (cur == null || Convert.ToInt32(cur) == 0)
+                        {
+                            sub.SetValue("IsPromoted", 1, Microsoft.Win32.RegistryValueKind.DWord);
+                            LogLine("tray promoted (key " + name + ")");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex) { LogLine("tray promote failed: " + ex.Message); }
+    }
+
     private void HideToTray()
     {
         Hide();
@@ -1309,6 +1384,7 @@ public sealed class MainForm : Form
             HideToTray();
             return;
         }
+        LogLine("closing, reason=" + e.CloseReason + " exitFlag=" + _exitFlag);
         _timer.Stop();
         _store.SaveMarkers(_markers);
         if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
