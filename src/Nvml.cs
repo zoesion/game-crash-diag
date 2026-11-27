@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -71,6 +71,9 @@ public static class Nvml
     [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
     private static extern int nvmlDeviceGetTotalEnergyConsumption(IntPtr device, ref ulong millijoules);
 
+    [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int nvmlSystemGetDriverVersion(byte[] version, uint length);
+
     private static bool _ready;
     private static IntPtr _dev = IntPtr.Zero;
 
@@ -103,6 +106,13 @@ public static class Nvml
                 int len = Array.IndexOf(buf, (byte)0);
                 if (len < 0) len = buf.Length;
                 DeviceName = Encoding.UTF8.GetString(buf, 0, len);
+            }
+            byte[] drv = new byte[80];
+            if (nvmlSystemGetDriverVersion(drv, (uint)drv.Length) == NVML_SUCCESS)
+            {
+                int dl = Array.IndexOf(drv, (byte)0);
+                if (dl < 0) dl = drv.Length;
+                DriverVersion = Encoding.UTF8.GetString(drv, 0, dl);
             }
             _ready = true;
             return true;

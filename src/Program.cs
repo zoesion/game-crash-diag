@@ -22,6 +22,8 @@ internal static class Program
         bool testDetect = false;
         bool testReport = false;
         bool crashTest = false;
+        bool startHidden = false;
+        bool diagTest = false;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "-SelfTest") selfTest = true;
@@ -29,6 +31,8 @@ internal static class Program
             else if (args[i] == "-TestDetect") testDetect = true;
             else if (args[i] == "-TestReport") testReport = true;
             else if (args[i] == "-TestCrashFlow") crashTest = true;
+            else if (args[i] == "-Tray") startHidden = true;
+            else if (args[i] == "-TestDiagnosis") diagTest = true;
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
         }
 
@@ -66,6 +70,15 @@ internal static class Program
                 return 0;
             }
 
+            if (diagTest)
+            {
+                using (var f2 = new MainForm(Root, tag))
+                {
+                    Console.WriteLine(f2.BuildDiagnosisText());
+                }
+                return 0;
+            }
+
             if (crashTest)
             {
                 using (var f = new MainForm(Root, tag))
@@ -75,7 +88,7 @@ internal static class Program
                 return 0;
             }
 
-            Application.Run(new MainForm(Root, tag));
+            Application.Run(new MainForm(Root, tag, startHidden));
         }
         return 0;
     }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -66,8 +66,12 @@ public sealed class MainForm : Form
     private DateTime _gameStart = DateTime.Now;
     private DateTime _scanAt = DateTime.MinValue;
     private readonly List<string> _tail = new List<string>();
+    private int _powerCapCount;
+    private int _lastClock;
+    private int _lastUtil;
+    private int _sessionCount;
 
-    public MainForm(string root, string tag)
+    public MainForm(string root, string tag, bool startHidden = false)
     {
         _root = root;
         _tag = tag;
@@ -95,6 +99,7 @@ public sealed class MainForm : Form
         _timer.Tick += (s, e) => Tick();
         Load += (s, e) =>
         {
+            if (startHidden) BeginInvoke(new Action(HideToTray));
             _cpu.Prime();
             RestoreHistory();
             _store.StartLog("system", 500);
@@ -160,7 +165,7 @@ public sealed class MainForm : Form
 
         // scrollbar
         _barTrack = new Panel();
-        _barTrack.BackColor = Color.FromArgb(38, 38, 46);
+        _barTrack.BackColor = Color.FromArgb(46, 46, 56);
         _barTrack.Bounds = new Rectangle(S(6), S(452), S(748), S(10));
         _barThumb = new Panel();
         _barThumb.BackColor = Color.FromArgb(112, 112, 126);
@@ -181,6 +186,10 @@ public sealed class MainForm : Form
         _menu.Items.Add(new ToolStripSeparator());
         var miClear = _menu.Items.Add(I18n.T("ClearChart", "清空曲线（只清屏幕上的）"));
         miClear.Click += (s, e) => { _tTime.Clear(); _gTemp.Clear(); _gPower.Clear(); _cTime.Clear(); _cTemp.Clear(); _cFreq.Clear(); Draw(); };
+        var miDiag = _menu.Items.Add(I18n.T("MenuDiag", "诊断报告"));
+        miDiag.Click += (s, e) => ShowDiagnosis();
+        var miAuto = _menu.Items.Add(I18n.T("MenuAuto", "开机自动启动"));
+        miAuto.Click += (s, e) => ToggleAutoStart(miAuto);
         _menu.Items.Add(new ToolStripSeparator());
         var miExit = _menu.Items.Add(I18n.T("TrayExit", "退出"));
         miExit.Click += (s, e) => { _exitFlag = true; Close(); };
@@ -288,6 +297,8 @@ public sealed class MainForm : Form
         }
 
         _store.AppendHistory(s);
+        _sessionCount++;
+        if ((s.Throttle & 0x1UL) != 0) _powerCapCount++;
         try
         {
             string csvLine = _store.AppendCsv(s);
@@ -300,6 +311,8 @@ public sealed class MainForm : Form
         catch { }
         CheckGame();
 
+        _lastClock = s.ClockSm;
+        _lastUtil = s.UtilGpu;
         _valTemp.Text = Fmt(s.GpuTemp, "0.0");
         _valPower.Text = Fmt(s.GpuPower, "0");
         _valClock.Text = s.ClockSm.ToString("N0");
@@ -319,7 +332,7 @@ public sealed class MainForm : Form
             ThrottleText(s.Throttle), PStateText(s.PState));
 
         _lblStats.Text = string.Format("{0} {1:N0}{2}    {3} 0    {4} {5}",
-            I18n.T("RowLogCount", "已记录"), _tTime.Count, I18n.T("StatsThis", "（本次）"),
+            I18n.T("RowLogCount", "已记录"), _sessionCount, I18n.T("StatsThis", "（本次）"),
             I18n.T("RowReports", "报告"), I18n.T("RowFile", "文件"), Path.GetFileName(_store.LogFile));
 
         _lblStatus.Text = "● " + I18n.T("StatusRec", "记录中");
@@ -577,7 +590,7 @@ public sealed class MainForm : Form
     private void LoadRules()
     {
         _lblVer.Text = "v6.0  " + I18n.T("DataDir", "数据目录") + ": " + _root;
-        _lblGpuName.Text = "GPU · " + (Nvml.Init() ? Nvml.DeviceName : "未检测到 NVIDIA 显卡");
+        _lblGpuName.Text = "GPU · " + (Nvml.Init() ? Nvml.DeviceName + "    驱动 " + Nvml.DriverVersion : "未检测到 NVIDIA 显卡");
         _nvmlReady = Nvml.IsReady;
         try
         {
@@ -779,6 +792,8 @@ public sealed class MainForm : Form
 
     private string ThrottleText(ulong mask)
     {
+        // P8/P5 待机时 NVIDIA 也会置功耗墙标志位，这时显示"待机"更有意义
+        if (_lastClock < 600 && _lastUtil < 5) return I18n.T("ThrottleIdle", "待机");
         if ((mask & 0x1UL) != 0) return I18n.T("ThrottlePower", "功耗墙");
         if ((mask & 0x4UL) != 0) return I18n.T("ThrottleThermal", "温度墙");
         if ((mask & 0x2UL) != 0) return I18n.T("ThrottleHw", "硬件降频");
@@ -795,6 +810,105 @@ public sealed class MainForm : Form
     private void OpenPath(string path)
     {
         try { Directory.CreateDirectory(path); Process.Start("explorer.exe", "\"" + path + "\""); } catch { }
+    }
+
+    // ── diagnosis dialog ────────────────────────────────────────
+    private void ShowDiagnosis()
+    {
+        var dlg = new TextDialog("诊断报告 - 游戏崩溃诊断器", BuildDiagnosisText(), false, null);
+        dlg.ShowDialog(this);
+    }
+
+    public string BuildDiagnosisText()
+    {
+        _cpu.Prime();
+        System.Threading.Thread.Sleep(350);
+        var d = new Diagnosis.Input();
+        d.GpuName = Nvml.IsReady ? Nvml.DeviceName : "未检测到 NVIDIA 显卡";
+        d.Driver = !string.IsNullOrEmpty(Nvml.DriverVersion) ? Nvml.DriverVersion : DriverVersion();
+        d.CpuName = CpuName();
+        d.Cores = PhysicalCores();
+        d.Threads = Environment.ProcessorCount;
+        d.RamGb = TotalRamGb();
+        d.OsName = OsName();
+        d.Version = "v6.0 (C#)";
+        d.Now = TakeSample();
+        d.Samples = _tTime.Count;
+        foreach (double v in _gTemp)
+        {
+            if (v > d.MaxTemp) d.MaxTemp = v;
+            if (v < d.MinTemp) d.MinTemp = v;
+        }
+        foreach (double v in _gPower) if (v > d.MaxPower) d.MaxPower = v;
+        foreach (double v in new List<double>()) { }
+        d.Markers = new List<Marker>(_markers);
+        d.PowerCapSamples = _powerCapCount;
+
+        string text = Diagnosis.Build(d);
+        return text;
+    }
+
+    private string DriverVersion()
+    {
+        try
+        {
+            var q = new System.Management.ManagementObjectSearcher(
+                "SELECT DriverVersion FROM Win32_VideoController WHERE Name LIKE '%NVIDIA%'");
+            foreach (System.Management.ManagementObject mo in q.Get())
+            {
+                object v = mo["DriverVersion"];
+                if (v != null) return v.ToString();
+            }
+        }
+        catch { }
+        return "?";
+    }
+
+    private string OsName()
+    {
+        try
+        {
+            var q = new System.Management.ManagementObjectSearcher("SELECT Caption, Version FROM Win32_OperatingSystem");
+            foreach (System.Management.ManagementObject mo in q.Get())
+            {
+                string cap = (mo["Caption"] as string ?? "").Trim();
+                string ver = mo["Version"] as string ?? "";
+                return cap + "  " + ver;
+            }
+        }
+        catch { }
+        return "?";
+    }
+
+    // ── autostart ───────────────────────────────────────────────
+    private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string RunName = "GameCrashDiag6";
+
+    private void ToggleAutoStart(ToolStripItem item)
+    {
+        if (!string.IsNullOrEmpty(_tag))
+        {
+            MessageBox.Show("测试副本不注册开机自启，避免顶掉正式版。", Text);
+            return;
+        }
+        try
+        {
+            using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey, true))
+            {
+                if (key == null) return;
+                if (key.GetValue(RunName) != null)
+                {
+                    key.DeleteValue(RunName, false);
+                    MessageBox.Show("已关闭开机自动启动。", Text);
+                }
+                else
+                {
+                    key.SetValue(RunName, "\"" + Application.ExecutablePath + "\" -Tray");
+                    MessageBox.Show("已开启开机自动启动（启动后进托盘）。", Text);
+                }
+            }
+        }
+        catch (Exception ex) { MessageBox.Show("修改失败: " + ex.Message, Text); }
     }
 
     private void HideToTray()
