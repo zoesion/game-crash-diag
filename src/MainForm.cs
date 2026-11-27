@@ -51,6 +51,7 @@ public sealed class MainForm : Form
     // controls
     private Label _lblGpuName, _lblStatus, _lblDetail, _lblStats, _lblHint, _lblVer, _lblCpuName, _lblTitle;
     private Label _tip;
+    private ToolStripItem _miStart;
     private Label[] _unitLabels;
     private Label _valTemp, _valPower, _valClock, _valUtil;
     private Label _valCpuTemp, _valCpuClock, _valCpuUtil, _valCpuCores;
@@ -204,18 +205,41 @@ public sealed class MainForm : Form
         Controls.Add(_tip);
 
         _menu = new ContextMenuStrip();
+        _miStart = _menu.Items.Add(I18n.T("MenuStart", "开始记录"));
+        _miStart.Click += (s, e) => ToggleLogging();
         var miLog = _menu.Items.Add(I18n.T("MenuLogs", "打开数据目录"));
         miLog.Click += (s, e) => OpenPath(_store.LogDir);
         var miRep = _menu.Items.Add(I18n.T("MenuReports", "打开崩溃报告"));
         miRep.Click += (s, e) => OpenPath(Path.Combine(_root, "reports"));
-        _menu.Items.Add(new ToolStripSeparator());
-        var miClear = _menu.Items.Add(I18n.T("ClearChart", "清空曲线（只清屏幕上的）"));
-        miClear.Click += (s, e) => { _tTime.Clear(); _gTemp.Clear(); _gPower.Clear(); _cTime.Clear(); _cTemp.Clear(); _cFreq.Clear(); Draw(); };
         var miDiag = _menu.Items.Add(I18n.T("MenuDiag", "诊断报告"));
         miDiag.Click += (s, e) => ShowDiagnosis();
+        _menu.Items.Add(new ToolStripSeparator());
+        var miClear = new ToolStripMenuItem(I18n.T("MenuClear", "清空数据"));
+        _menu.Items.Add(miClear);
+        var miClearChart = miClear.DropDown.Items.Add(I18n.T("ClearChart", "清空曲线（只清屏幕上的）"));
+        miClearChart.Click += (s, e) =>
+        {
+            _tTime.Clear(); _gTemp.Clear(); _gPower.Clear();
+            _cTime.Clear(); _cTemp.Clear(); _cFreq.Clear();
+            _sessionCount = 0;
+            Draw();
+        };
+        var miClearAll = miClear.DropDown.Items.Add(I18n.T("ClearAll", "清空全部历史（删 logs / reports）"));
+        miClearAll.Click += (s, e) => ClearAllData();
+        _menu.Items.Add(new ToolStripSeparator());
+        var miDx = _menu.Items.Add(I18n.T("MenuDx", "DirectX 检查"));
+        miDx.Click += (s, e) => ShowDirectX();
         var miAuto = _menu.Items.Add(I18n.T("MenuAuto", "开机自动启动"));
         miAuto.Click += (s, e) => ToggleAutoStart(miAuto);
+        var miLang = new ToolStripMenuItem(I18n.T("MenuLang", "语言 / Language"));
+        _menu.Items.Add(miLang);
+        var miZh = miLang.DropDown.Items.Add("简体中文");
+        miZh.Click += (s, e) => SwitchLanguage("zh-CN");
+        var miEn = miLang.DropDown.Items.Add("English");
+        miEn.Click += (s, e) => SwitchLanguage("en-US");
         _menu.Items.Add(new ToolStripSeparator());
+        var miAbout = _menu.Items.Add(I18n.T("MenuAbout", "关于"));
+        miAbout.Click += (s, e) => ShowAbout();
         var miExit = _menu.Items.Add(I18n.T("TrayExit", "退出"));
         miExit.Click += (s, e) => { _exitFlag = true; Close(); };
 
@@ -884,6 +908,161 @@ public sealed class MainForm : Form
     private void OpenPath(string path)
     {
         try { Directory.CreateDirectory(path); Process.Start("explorer.exe", "\"" + path + "\""); } catch { }
+    }
+
+    // ── menu actions ────────────────────────────────────────────
+    private bool _logging = true;
+
+    private void ToggleLogging()
+    {
+        if (_logging)
+        {
+            _timer.Stop();
+            _logging = false;
+            _lblStatus.Text = "◼ " + I18n.T("StatusIdle", "已停止");
+            _lblStatus.ForeColor = CDim;
+            _miStart.Text = I18n.T("MenuStart", "开始记录");
+        }
+        else
+        {
+            _store.StartLog(_game != null ? SafeName(_game.Name) : "system", 500);
+            _tail.Clear();
+            _timer.Start();
+            _logging = true;
+            _lblStatus.Text = "● " + I18n.T("StatusRec", "记录中");
+            _lblStatus.ForeColor = CAccent;
+            _miStart.Text = I18n.T("MenuStop", "停止记录");
+        }
+    }
+
+    private void ClearAllData()
+    {
+        var ans = MessageBox.Show(I18n.T("ClearAsk", "确定清空全部历史数据？会删除 logs 和 reports 里的所有文件，不可恢复。"),
+            Text, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+        if (ans != DialogResult.Yes) return;
+        _timer.Stop();
+        try
+        {
+            foreach (string sub in new[] { "logs", "reports" })
+            {
+                string dir = Path.Combine(_root, sub);
+                if (Directory.Exists(dir))
+                    foreach (string f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+                    { try { File.Delete(f); } catch { } }
+            }
+            _tTime.Clear(); _gTemp.Clear(); _gPower.Clear();
+            _cTime.Clear(); _cTemp.Clear(); _cFreq.Clear();
+            _markers.Clear();
+            _store.SaveMarkers(_markers);
+            _sessionCount = 0;
+            _store.StartLog(_game != null ? SafeName(_game.Name) : "system", 500);
+            _lblHint.Text = I18n.T("ClearDone", "已清空全部历史");
+        }
+        catch { }
+        _logging = true;
+        _timer.Start();
+        Draw();
+    }
+
+    private void ShowAbout()
+    {
+        string body =
+            I18n.T("AppTitle", "游戏崩溃诊断器") + "   GameCrashDiag  v6.0\n\n" +
+            "【它是什么】\n一个轻量的本地监控与崩溃取证工具：游戏运行时自动记录显卡和 CPU 的温度、功耗、频率、占用，\n" +
+            "游戏闪退后自动生成一份能直接看懂的诊断报告。\n\n" +
+            "【为什么会有它】\n最早是为了排查《战地 6》的 DXGI_ERROR_DEVICE_HUNG 闪退写的。\n" +
+            "在翻了几百个崩溃转储之后，发现绝大多数问题都集中在三个地方：散热、驱动、超频。\n\n" +
+            "【能做什么】\n" +
+            " · 实时监控 GPU / CPU 共 12 项指标，双曲线走势，鼠标悬停看具体数值\n" +
+            " · 自动识别全屏游戏，按游戏名分目录记录\n" +
+            " · 崩溃后自动判定并生成报告，带崩溃前 40 条遥测\n" +
+            " · 诊断报告：硬件 / 驱动 / 当前状态 / 本次统计 / 崩溃历史 / 建议\n\n" +
+            "【技术】\n" +
+            "C# + WinForms，零安装依赖；GPU 走 NVML 直连（0.09ms/次），CPU 走性能计数器，\n" +
+            "AMD / Intel 显卡通过内置的 LibreHardwareMonitor 读取。\n\n" +
+            "版本: v6.0 (C#)\n数据目录: " + _root;
+        var dlg = new TextDialog(I18n.T("AboutTitle", "关于 游戏崩溃诊断器"), body, false, null);
+        dlg.ShowDialog(this);
+    }
+
+    private void ShowDirectX()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("=== DirectX 检查 ===");
+        sb.AppendLine();
+        try
+        {
+            using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                @"SOFTWARE\Microsoft\DirectX"))
+            {
+                object v = key != null ? key.GetValue("Version") : null;
+                sb.AppendLine("DirectX 版本: " + (v != null ? v.ToString() : "未检测到"));
+            }
+        }
+        catch { sb.AppendLine("DirectX 版本: 读取失败"); }
+
+        sb.AppendLine();
+        sb.AppendLine("核心组件:");
+        string sys = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        foreach (string name in new[] { "d3d11.dll", "d3d12.dll", "dxgi.dll", "d3dcompiler_47.dll", "dxdiagn.dll", "d3dx9_43.dll" })
+        {
+            string p = Path.Combine(sys, name);
+            string where = File.Exists(p) ? "OK   " + p : "缺失";
+            sb.AppendLine("  " + name.PadRight(20) + where);
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("DirectX 运行时（DXSETUP）:");
+        bool dxsetup = false;
+        foreach (string dir in new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "D3DCompiler_47.dll"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32")
+        })
+        {
+            if (File.Exists(dir)) { dxsetup = true; break; }
+        }
+        sb.AppendLine(dxsetup ? "  已安装或系统自带，通常无需修复" : "  未找到，可点下方按钮运行微软官方修复");
+        sb.AppendLine();
+        sb.AppendLine("如果游戏报 0x887A0006 / 0x887A0005，多半是显卡驱动或显存问题，建议先更新/回滚驱动。");
+
+        var dlg = new TextDialog("DirectX 检查 - 游戏崩溃诊断器", sb.ToString(), true, RunDxRepair);
+        dlg.ShowDialog(this);
+    }
+
+    private void RunDxRepair()
+    {
+        var ans = MessageBox.Show(
+            "将用管理员权限运行系统文件检查：\n\nDISM /Online /Cleanup-Image /RestoreHealth\n\n这可能需要几分钟，确定继续？",
+            Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (ans != DialogResult.Yes) return;
+        try
+        {
+            var psi = new ProcessStartInfo("cmd.exe",
+                "/c echo 正在修复 DirectX 组件... & DISM /Online /Cleanup-Image /RestoreHealth & pause")
+            { Verb = "runas", UseShellExecute = true };
+            Process.Start(psi);
+        }
+        catch (Exception ex) { MessageBox.Show("启动失败: " + ex.Message, Text); }
+    }
+
+    private void SwitchLanguage(string code)
+    {
+        try
+        {
+            string dir = Path.Combine(_root, "data");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.ini"), "lang=" + code, new System.Text.UTF8Encoding(false));
+            var ans = MessageBox.Show(
+                code == "en-US" ? "Language will be applied after restart. Restart now?" : "语言将在重启后生效，现在就重启吗？",
+                Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (ans != DialogResult.Yes) return;
+            var psi = new ProcessStartInfo(Application.ExecutablePath);
+            Process.Start(psi);
+            _exitFlag = true;
+            Close();
+        }
+        catch { }
     }
 
     // ── diagnosis dialog ────────────────────────────────────────

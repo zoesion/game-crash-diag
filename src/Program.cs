@@ -65,7 +65,16 @@ internal static class Program
             // DPI awareness must be set before any user32 call, otherwise the window is bitmap-scaled
             try { Native.SetProcessDPIAware(); } catch { }
             if (uiTest) Console.WriteLine("DPI awareness: " + Native.GetAwareness());
-            I18n.Load(Path.Combine(Root, "lang"), "zh-CN");
+            string langCode = "zh-CN";
+            try
+            {
+                string st = Path.Combine(Root, "data", "settings.ini");
+                if (File.Exists(st))
+                    foreach (string line in File.ReadAllLines(st))
+                        if (line.StartsWith("lang=")) langCode = line.Substring(5).Trim();
+            }
+            catch { }
+            I18n.Load(Path.Combine(Root, "lang"), langCode);
             try { Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); } catch { }
 
             if (uiTest)
