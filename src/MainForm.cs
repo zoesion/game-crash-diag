@@ -48,6 +48,8 @@ public sealed class MainForm : Form
     private double _lastCpuTemp = 0;
     private string _cpuTempSource = "";
     private double _cpuPower;
+    private bool _tsRunning = true;
+    private DateTime _tsChecked = DateTime.MinValue;
     private int _lastCpuFreq = 0;
     private DateTime _cpuTempAt = DateTime.MinValue;
     private bool _lhmReady;
@@ -526,6 +528,8 @@ public sealed class MainForm : Form
             ThrottleText(s.Throttle), PStateText(s.PState));
         if (_cpuPower > 0)
             _lblDetail.Text += string.Format("   ·   CPU 功耗 {0:0}W", _cpuPower);
+        if (!_tsRunning)
+            _lblDetail.Text += I18n.T("TsMissing", "   ·   ⚠ ThrottleStop 未运行（功耗墙 200W，高温可能关机）");
         if (_cpuTempSource == "ACPI")
             _lblDetail.Text += I18n.T("TempAcpiHint", "   ·   温度源 ACPI");
 
@@ -550,6 +554,21 @@ public sealed class MainForm : Form
             _lblStatus.ForeColor = CAccent;
             _lblHint.Text = I18n.T("HintNoGame", "未检测到游戏，正在做系统监控（logs\\system\\）");
             _lblHint.ForeColor = CDim;
+        }
+
+        if ((DateTime.Now - _tsChecked).TotalSeconds >= 15)
+        {
+            _tsChecked = DateTime.Now;
+            try
+            {
+                bool running = Process.GetProcessesByName("ThrottleStop").Length > 0;
+                if (running != _tsRunning)
+                {
+                    _tsRunning = running;
+                    LogLine("ThrottleStop running=" + running);
+                }
+            }
+            catch { }
         }
 
         if ((DateTime.Now - _lastBeat).TotalSeconds >= 60)
