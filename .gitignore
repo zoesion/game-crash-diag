@@ -24,3 +24,6 @@ GameCrashDiag-setup-*
 # 临时调试文件
 _*.png
 _*.ps1
+
+setup/app6.zip
+setup/setup6.exe
