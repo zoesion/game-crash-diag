@@ -35,14 +35,26 @@ function Copy-WithRetry([string]$from, [string]$to) {
     }
 }
 
-$files = @('GameCrashDiag6.exe', 'README.md', 'LICENSE', 'instance.txt')
+$files = @('GameCrashDiag6.exe', 'uninstall6.ps1', 'README.md', 'LICENSE', 'instance.txt')
 foreach ($f in $files) {
     $p = Join-Path $src $f
     if (Test-Path $p) { Copy-WithRetry $p $InstallDir }
 }
+function Merge-Copy([string]$from, [string]$to) {
+    if (-not (Test-Path $to)) { New-Item -ItemType Directory -Force -Path $to | Out-Null }
+    Get-ChildItem $from -Force | ForEach-Object {
+        $target = Join-Path $to $_.Name
+        if ($_.PSIsContainer) {
+            Merge-Copy $_.FullName $target
+        } else {
+            Copy-WithRetry $_.FullName $target
+        }
+    }
+}
+
 foreach ($sub in 'thirdparty', 'lang', 'data', 'docs') {
     $p = Join-Path $src $sub
-    if (Test-Path $p) { Copy-WithRetry $p (Join-Path $InstallDir $sub) }
+    if (Test-Path $p) { Merge-Copy $p (Join-Path $InstallDir $sub) }
 }
 
 # 测试副本的 instance.txt 不能带到正式安装里
@@ -94,7 +106,8 @@ try {
     Set-ItemProperty -Path $uninst -Name 'DisplayVersion' -Value '6.0' -Force
     Set-ItemProperty -Path $uninst -Name 'InstallLocation' -Value $InstallDir -Force
     Set-ItemProperty -Path $uninst -Name 'DisplayIcon' -Value $exe -Force
-    Set-ItemProperty -Path $uninst -Name 'UninstallString' -Value ('"' + $exe + '"') -Force
+    $uninstCmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $InstallDir 'uninstall6.ps1') + '"'
+    Set-ItemProperty -Path $uninst -Name 'UninstallString' -Value $uninstCmd -Force
     Set-ItemProperty -Path $uninst -Name 'NoModify' -Value 1 -PropertyType DWord -Force
     Set-ItemProperty -Path $uninst -Name 'NoRepair' -Value 1 -PropertyType DWord -Force
 } catch { }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -102,7 +102,7 @@ internal static class Program
                 {
                     f3.Show();
                     Application.DoEvents();
-                    System.Threading.Thread.Sleep(1200);
+                    System.Threading.Thread.Sleep(2600);
                     Application.DoEvents();
                     f3.CapturePng(shotPath);
                     f3.Hide();

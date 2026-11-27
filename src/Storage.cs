@@ -141,7 +141,7 @@ public sealed class Storage
         {
             Directory.CreateDirectory(HistoryDir);
             var sb = new StringBuilder();
-            foreach (var m in markers) sb.AppendLine(m.Time.ToString("o") + "|" + m.Kind);
+            foreach (var m in markers) sb.AppendLine(m.Time.ToString("o") + "|" + m.Kind + "|" + (m.Note ?? ""));
             File.WriteAllText(MarkerFile, sb.ToString(), new UTF8Encoding(false));
         }
         catch { }
@@ -161,7 +161,7 @@ public sealed class Storage
                 DateTime t;
                 if (!DateTime.TryParse(p[0], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out t)) continue;
                 if (t < cut) continue;
-                list.Add(new Marker { Time = t, Kind = p[1] });
+                list.Add(new Marker { Time = t, Kind = p[1], Note = p.Length > 2 ? p[2] : "" });
             }
         }
         catch { }
@@ -173,4 +173,5 @@ public struct Marker
 {
     public DateTime Time;
     public string Kind;   // crash | down | gap
+    public string Note;   // 可选：显示在曲线上的文字（如"隔 2.3 小时"）
 }

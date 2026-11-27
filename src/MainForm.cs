@@ -250,6 +250,8 @@ public sealed class MainForm : Form
             var dlgCodes = new TextDialog("错误码对照表", ErrorCodes.Table(), false, null);
             dlgCodes.ShowDialog(this);
         };
+        var miUninst = _menu.Items.Add(I18n.T("MenuUninst", "卸载本程序"));
+        miUninst.Click += (s, e) => RunUninstaller();
         var miAbout = _menu.Items.Add(I18n.T("MenuAbout", "关于"));
         miAbout.Click += (s, e) => ShowAbout();
         var miExit = _menu.Items.Add(I18n.T("TrayExit", "退出"));
@@ -672,8 +674,17 @@ public sealed class MainForm : Form
         int n = _store.LoadHistory(6.0, _maxPoints, _tTime, _gTemp, _gPower, _cTemp, _cFreq);
         for (int i = 0; i < n; i++) _cTime.Add(_tTime[_tTime.Count - n + i]);
         if (n > 0)
+        {
             _lblHint.Text = I18n.T("HintNoGame", "未检测到游戏，正在做系统监控") +
                             string.Format(I18n.T("RestoredHint", "（接上次 {0} 点）"), n);
+            DateTime last = _tTime[_tTime.Count - 1];
+            double mins = (DateTime.Now - last).TotalMinutes;
+            if (mins >= 2)
+            {
+                string note = mins >= 60 ? "隔 " + Math.Round(mins / 60.0, 1) + " 小时" : "隔 " + (int)mins + " 分钟";
+                _markers.Add(new Marker { Time = last, Kind = "gap", Note = note });
+            }
+        }
     }
 
     private void LoadRules()
@@ -819,7 +830,8 @@ public sealed class MainForm : Form
                         if (m.Kind == "gap") pen.DashStyle = DashStyle.Dash;
                         g.DrawLine(pen, x, 4, x, bmp.Height - 4);
                     }
-                    string txt = m.Kind == "crash" ? I18n.T("MarkerCrash", "崩溃")
+                    string txt = !string.IsNullOrEmpty(m.Note) ? m.Note
+                               : m.Kind == "crash" ? I18n.T("MarkerCrash", "崩溃")
                                : m.Kind == "down" ? I18n.T("MarkerDown", "宕机")
                                : I18n.T("MarkerGap", "中断");
                     using (var brush = new SolidBrush(col))
@@ -1074,6 +1086,29 @@ public sealed class MainForm : Form
             Process.Start(psi);
         }
         catch (Exception ex) { MessageBox.Show("启动失败: " + ex.Message, Text); }
+    }
+
+    private void RunUninstaller()
+    {
+        string script = Path.Combine(_root, "uninstall6.ps1");
+        if (!File.Exists(script))
+        {
+            MessageBox.Show("找不到卸载脚本 uninstall6.ps1，请从安装目录手动删除。", Text);
+            return;
+        }
+        var ans = MessageBox.Show("确定要卸载本程序吗？日志和崩溃报告会保留。", Text,
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+        if (ans != DialogResult.Yes) return;
+        try
+        {
+            var psi = new ProcessStartInfo("powershell.exe",
+                "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"")
+            { UseShellExecute = true };
+            Process.Start(psi);
+            _exitFlag = true;
+            Close();
+        }
+        catch (Exception ex) { MessageBox.Show("启动卸载程序失败: " + ex.Message, Text); }
     }
 
     private void SwitchLanguage(string code)
