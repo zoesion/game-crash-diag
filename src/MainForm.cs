@@ -200,10 +200,10 @@ public sealed class MainForm : Form
 
         // scrollbar
         _barTrack = new Panel();
-        _barTrack.BackColor = Color.FromArgb(58, 58, 70);
+        _barTrack.BackColor = Color.FromArgb(68, 68, 82);
         _barTrack.Bounds = new Rectangle(S(6), S(450), S(748), S(12));
         _barThumb = new Panel();
-        _barThumb.BackColor = Color.FromArgb(134, 134, 152);
+        _barThumb.BackColor = Color.FromArgb(152, 152, 172);
         _barThumb.Bounds = new Rectangle(0, S(2), S(120), S(8));
         _barTrack.Controls.Add(_barThumb);
         Controls.Add(_barTrack);
@@ -215,7 +215,7 @@ public sealed class MainForm : Form
             _barDrag = true;
             _barDragX = Cursor.Position.X;
             _barDragLeft = _barThumb.Left;
-            _barThumb.BackColor = Color.FromArgb(176, 176, 196);
+            _barThumb.BackColor = Color.FromArgb(190, 190, 210);
         };
         _barThumb.MouseMove += (s, e) =>
         {
@@ -232,7 +232,7 @@ public sealed class MainForm : Form
         {
             if (!_barDrag) return;
             _barDrag = false;
-            _barThumb.BackColor = Color.FromArgb(134, 134, 152);
+            _barThumb.BackColor = Color.FromArgb(152, 152, 172);
             Draw();
         };
 
