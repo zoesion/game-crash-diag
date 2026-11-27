@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -727,7 +727,7 @@ public sealed class MainForm : Form
                 PowerSummary = SafePowerSummary(),
                 BatteryLine = BatteryLine()
             };
-            string report = CrashReport.Write(Path.Combine(Path.GetTempPath(), "gcd-test-reports"), input);
+            string report = CrashReport.Write(_root, input);
             string snap = verdict.IsCrash
                 ? CrashReport.SaveSnapshot(_root, _bmpFront, _bmpCpuFront)
                 : "";
@@ -949,13 +949,33 @@ public sealed class MainForm : Form
         catch { return "  （读取电源事件失败）" + Environment.NewLine; }
     }
 
+    private static DateTime LastBootTime()
+    {
+        try
+        {
+            var os = new System.Management.ManagementObjectSearcher("SELECT LastBootUpTime FROM Win32_OperatingSystem");
+            foreach (System.Management.ManagementObject o in os.Get())
+            {
+                object raw = o["LastBootUpTime"];
+                if (raw is DateTime) return (DateTime)raw;
+                return System.Management.ManagementDateTimeConverter.ToDateTime(raw.ToString());
+            }
+        }
+        catch { }
+        return DateTime.Now.AddHours(-2);
+    }
+
     private void CheckPowerEvents()
     {
         try
         {
-            PowerEvents pe = PowerEvents.Collect(DateTime.Now.AddHours(-2));
-            LogLine(string.Format("power events: ecTimeouts={0} criticalBattery={1} sleeps={2} unclean={3}",
-                pe.EcTimeouts, pe.CriticalBattery, pe.SleepCount, pe.UnexpectedShutdown));
+            DateTime from = DateTime.Now.AddHours(-2);
+            DateTime boot = LastBootTime();
+            if (boot > from) from = boot;       // 只看本次开机以来的事件（EC 复位后不该再提示旧账）
+            PowerEvents pe = PowerEvents.Collect(from);
+            LogLine(string.Format("power events: from={0} boot={1} ec={2} batt={3} sleeps={4} unclean={5} gpu={6}",
+                from.ToString("HH:mm:ss"), boot.ToString("HH:mm:ss"),
+                pe.EcTimeouts, pe.CriticalBattery, pe.SleepCount, pe.UnexpectedShutdown, pe.GpuFaults));
             if (pe.HasProblem)
             {
                 _powerWarn = string.Format("EC 超时 {0} 次 / 临界电量误报 {1} 次（建议 EC 复位）", pe.EcTimeouts, pe.CriticalBattery);
