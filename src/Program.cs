@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -29,6 +29,7 @@ internal static class Program
         bool crashTest = false;
         bool startHidden = false;
         bool diagTest = false;
+        bool codeTest = false;
         string shotPath = "";
         for (int i = 0; i < args.Length; i++)
         {
@@ -39,11 +40,13 @@ internal static class Program
             else if (args[i] == "-TestCrashFlow") crashTest = true;
             else if (args[i] == "-Tray") startHidden = true;
             else if (args[i] == "-TestDiagnosis") diagTest = true;
+            else if (args[i] == "-TestCodes") codeTest = true;
             else if (args[i] == "-Shot" && i + 1 < args.Length) shotPath = args[++i];
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
         }
 
         if (selfTest || collectSeconds > 0) return Headless(selfTest, collectSeconds);
+        if (codeTest) return CodeTest();
         if (testDetect) return DetectTest();
         if (testReport) return ReportTest();
 
@@ -131,6 +134,18 @@ internal static class Program
         return 0;
     }
 
+    private static int CodeTest()
+    {
+        ErrorCodes.Load(Root, I18n.Code);
+        Console.WriteLine("错误码表: " + ErrorCodes.Count + " 条");
+        string sample = "Faulting module dxgi.dll, code 0x887A0006 (DXGI_ERROR_DEVICE_HUNG) at nvlddmkm.sys";
+        Console.WriteLine("样本: " + sample);
+        Console.WriteLine(ErrorCodes.Explain(sample));
+        Console.WriteLine("--- 再试一个 ---");
+        Console.WriteLine(ErrorCodes.Explain("WHEA_UNCORRECTABLE_ERROR  0x00000124  bugcheck"));
+        return 0;
+    }
+
     private static int DetectTest()
     {
         var hit = GameDetect.Find();
@@ -148,6 +163,9 @@ internal static class Program
 
     private static int ReportTest()
     {
+        ErrorCodes.Load(Root, I18n.Code);
+        Console.WriteLine("错误码表: " + ErrorCodes.Count + " 条");
+        Console.WriteLine("查找测试: " + ErrorCodes.Find("code 0x887A0006").Count + " 条命中");
         var input = new CrashReport.ReportInput();
         input.IsCrash = true;
         input.Reason = "应用错误事件 1000";
@@ -156,6 +174,9 @@ internal static class Program
         input.StartTime = DateTime.Now.AddMinutes(-12);
         input.ExitTime = DateTime.Now;
         input.TelemetryFile = "(测试数据)";
+        input.IdleGpuTemp = 30.2; input.IdleCpuTemp = 45.0;
+        input.GameGpuAvg = 68.4; input.GameGpuMax = 74.0; input.GameCpuAvg = 82.0;
+        input.EventText = "Faulting module dxgi.dll, exception code 0x887A0006";
         var rnd = new Random(7);
         for (int i = 0; i < 50; i++)
         {

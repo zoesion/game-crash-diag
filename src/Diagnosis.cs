@@ -22,6 +22,7 @@ public static class Diagnosis
         public int PowerCapSamples;
         public List<Marker> Markers = new List<Marker>();
         public string Version = "";
+        public double IdleGpuTemp, IdleCpuTemp;
     }
 
     public static string Build(Input d)
@@ -63,6 +64,14 @@ public static class Diagnosis
             sb.AppendLine(string.Format(" 核心频率 {0:N0} ~ {1:N0} MHz   撞功耗墙 {2:0.#}% 的采样",
                 d.MinClock, d.MaxClock, d.Samples > 0 ? d.PowerCapSamples * 100.0 / d.Samples : 0));
         sb.AppendLine();
+
+        if (d.IdleGpuTemp > 0 && d.Now.GpuTemp > 0)
+        {
+            sb.AppendLine("【温度基线】");
+            sb.AppendLine(string.Format(" 空闲 GPU {0:0.0}°C   CPU {1:0.0}°C   （当前 {2:0.0}°C / {3:0.0}°C）",
+                d.IdleGpuTemp, d.IdleCpuTemp, d.Now.GpuTemp, d.Now.CpuTemp));
+            sb.AppendLine();
+        }
 
         sb.AppendLine("【崩溃历史】");
         DateTime cut = DateTime.Now.AddDays(-7);

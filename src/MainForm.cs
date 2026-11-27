@@ -75,6 +75,11 @@ public sealed class MainForm : Form
     private int _lastUtil;
     private int _sessionCount;
     private double _ramGb;
+    // 温度基线：不打游戏时累积，游戏内对比
+    private double _idleGpuSum, _idleCpuSum;
+    private int _idleCount;
+    private double _gameGpuSum, _gameCpuSum, _gameGpuMax;
+    private int _gameCount;
 
     public MainForm(string root, string tag, bool startHidden = false)
     {
@@ -99,6 +104,7 @@ public sealed class MainForm : Form
         Font = new Font("Microsoft YaHei UI", 9f);
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
+        ErrorCodes.Load(_root, I18n.Code);
         BuildUi();
         LoadRules();
         ApplyDarkTitleBar();
@@ -238,6 +244,12 @@ public sealed class MainForm : Form
         var miEn = miLang.DropDown.Items.Add("English");
         miEn.Click += (s, e) => SwitchLanguage("en-US");
         _menu.Items.Add(new ToolStripSeparator());
+        var miCodes = _menu.Items.Add(I18n.T("MenuCodes", "错误码对照表"));
+        miCodes.Click += (s, e) =>
+        {
+            var dlgCodes = new TextDialog("错误码对照表", ErrorCodes.Table(), false, null);
+            dlgCodes.ShowDialog(this);
+        };
         var miAbout = _menu.Items.Add(I18n.T("MenuAbout", "关于"));
         miAbout.Click += (s, e) => ShowAbout();
         var miExit = _menu.Items.Add(I18n.T("TrayExit", "退出"));
@@ -369,6 +381,17 @@ public sealed class MainForm : Form
         catch { }
         CheckGame();
 
+        if (_game == null)
+        {
+            if (s.GpuTemp > 0) { _idleGpuSum += s.GpuTemp; _idleCount++; }
+            if (s.CpuTemp > 0) _idleCpuSum += s.CpuTemp;
+        }
+        else
+        {
+            if (s.GpuTemp > 0) { _gameGpuSum += s.GpuTemp; if (s.GpuTemp > _gameGpuMax) _gameGpuMax = s.GpuTemp; _gameCount++; }
+            if (s.CpuTemp > 0) _gameCpuSum += s.CpuTemp;
+        }
+
         _lastClock = s.ClockSm;
         _lastUtil = s.UtilGpu;
         _valTemp.Text = Fmt(s.GpuTemp, "0.0");
@@ -466,6 +489,7 @@ public sealed class MainForm : Form
         {
             _game = hit;
             _gameStart = hit.StartTime > DateTime.Now.AddDays(-1) ? hit.StartTime : DateTime.Now;
+            _gameGpuSum = 0; _gameCpuSum = 0; _gameGpuMax = 0; _gameCount = 0;
             _tail.Clear();
             _store.StartLog(SafeName(hit.Name), 500);
             _lblHint.Text = string.Format(I18n.T("HintGame", "已检测到游戏 {0}，正在记录到 logs\\{1}\\"),
@@ -488,7 +512,13 @@ public sealed class MainForm : Form
                 StartTime = _gameStart,
                 ExitTime = exitTime,
                 TelemetryFile = _store.LogFile,
-                TailRows = new List<string>(_tail)
+                TailRows = new List<string>(_tail),
+                EventText = CrashReport.CollectEventText(exitTime.AddMinutes(-2)),
+                IdleGpuTemp = _idleCount > 0 ? _idleGpuSum / _idleCount : 0,
+                IdleCpuTemp = _idleCount > 0 ? _idleCpuSum / _idleCount : 0,
+                GameGpuAvg = _gameCount > 0 ? _gameGpuSum / _gameCount : 0,
+                GameGpuMax = _gameGpuMax,
+                GameCpuAvg = _gameCount > 0 ? _gameCpuSum / _gameCount : 0
             };
             string report = CrashReport.Write(_root, input);
             string snap = verdict.IsCrash
@@ -1112,6 +1142,8 @@ public sealed class MainForm : Form
         foreach (double v in new List<double>()) { }
         d.Markers = new List<Marker>(_markers);
         d.PowerCapSamples = _powerCapCount;
+        d.IdleGpuTemp = _idleCount > 0 ? _idleGpuSum / _idleCount : 0;
+        d.IdleCpuTemp = _idleCount > 0 ? _idleCpuSum / _idleCount : 0;
 
         string text = Diagnosis.Build(d);
         return text;

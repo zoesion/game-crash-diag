@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
@@ -79,6 +79,56 @@ public static class CrashReport
         return t.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
     }
 
+    /// <summary>Gathers recent event-log text so error codes can be explained in the report.</summary>
+    public static string CollectEventText(DateTime since, int max = 6)
+    {
+        var sb = new StringBuilder();
+        int taken = 0;
+        try
+        {
+            var q = new EventLogQuery("Application", PathType.LogName,
+                "*[System[(EventID=1000 or EventID=1001) and TimeCreated[@SystemTime>='" + XmlTime(since) + "']]]");
+            using (var reader = new EventLogReader(q))
+            {
+                EventRecord rec;
+                while (taken < max && (rec = reader.ReadEvent()) != null)
+                {
+                    using (rec)
+                    {
+                        string msg = "";
+                        try { msg = rec.FormatDescription() ?? ""; } catch { }
+                        if (msg.Length > 600) msg = msg.Substring(0, 600);
+                        sb.AppendLine(msg);
+                        taken++;
+                    }
+                }
+            }
+        }
+        catch { }
+        try
+        {
+            var q2 = new EventLogQuery("System", PathType.LogName,
+                "*[System[(Provider[@Name='nvlddmkm']) and TimeCreated[@SystemTime>='" + XmlTime(since) + "']]]");
+            using (var reader2 = new EventLogReader(q2))
+            {
+                EventRecord rec;
+                while (taken < max && (rec = reader2.ReadEvent()) != null)
+                {
+                    using (rec)
+                    {
+                        string msg = "";
+                        try { msg = rec.FormatDescription() ?? ""; } catch { }
+                        if (msg.Length > 400) msg = msg.Substring(0, 400);
+                        sb.AppendLine(msg);
+                        taken++;
+                    }
+                }
+            }
+        }
+        catch { }
+        return sb.ToString();
+    }
+
     public sealed class ReportInput
     {
         public bool IsCrash;
@@ -89,6 +139,8 @@ public static class CrashReport
         public DateTime ExitTime = DateTime.Now;
         public string TelemetryFile = "";
         public List<string> TailRows = new List<string>();
+        public string EventText = "";
+        public double IdleGpuTemp, IdleCpuTemp, GameGpuAvg, GameGpuMax, GameCpuAvg;
     }
 
     public static string Write(string root, ReportInput input)
@@ -120,6 +172,27 @@ public static class CrashReport
         sb.AppendLine("  --- 数据摘要 ---");
         sb.AppendLine(Summary(input.TailRows));
         sb.AppendLine();
+        // 错误码解读：从事件日志 + 遥测尾部里找已知代码
+        string evidence = (input.EventText ?? "") + string.Join("\n", input.TailRows.ToArray());
+        // 温度基线：空闲 vs 游戏内
+        if (input.IdleGpuTemp > 0 && input.GameGpuAvg > 0)
+        {
+            sb.AppendLine("  --- 温度基线（空闲 vs 游戏内）---");
+            sb.AppendLine(string.Format("  GPU : 空闲 {0:0.0}°C  →  游戏平均 {1:0.0}°C  最高 {2:0.0}°C   升幅 {3:+0.0;-0.0}°C",
+                input.IdleGpuTemp, input.GameGpuAvg, input.GameGpuMax, input.GameGpuAvg - input.IdleGpuTemp));
+            if (input.IdleCpuTemp > 0 && input.GameCpuAvg > 0)
+                sb.AppendLine(string.Format("  CPU : 空闲 {0:0.0}°C  →  游戏平均 {1:0.0}°C   升幅 {2:+0.0;-0.0}°C",
+                    input.IdleCpuTemp, input.GameCpuAvg, input.GameCpuAvg - input.IdleCpuTemp));
+            double rise = input.GameGpuAvg - input.IdleGpuTemp;
+            if (rise > 45) sb.AppendLine("  升幅超过 45°C，散热余量偏紧，建议检查风扇曲线和硅脂");
+            else if (rise < 20) sb.AppendLine("  升幅较小，散热状态良好");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("  --- 错误码解读 ---");
+        sb.Append(ErrorCodes.Explain(evidence));
+        sb.AppendLine();
+
         sb.AppendLine("  --- 建议 ---");
         if (input.IsCrash)
         {
