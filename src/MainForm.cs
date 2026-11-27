@@ -848,14 +848,38 @@ public sealed class MainForm : Form
             double mins = (DateTime.Now - last).TotalMinutes;
             // 每次接续都画一条分界线（哪怕只断了 10 秒），这样"上一次会话到今天"看得见
             bool dead = false;
-            if (mins >= 2) { try { dead = CrashReport.DetectUncleanShutdown(last.AddMinutes(-2)); } catch { } }
+            try { dead = CrashReport.DetectUncleanShutdown(last); } catch { }
+            if (dead) LogLine("unclean shutdown detected around " + last.ToString("HH:mm:ss"));
             string note = dead ? "宕机"
                 : (mins >= 60 ? "隔 " + Math.Round(mins / 60.0, 1) + " 小时"
                 : (mins >= 2 ? "隔 " + (int)mins + " 分钟" : "续接"));
             _markers.Add(new Marker { Time = last, Kind = dead ? "down" : "gap", Note = note });
             LogLine("marker added: kind=" + (dead ? "down" : "gap") + " note=" + note + " gapMin=" + Math.Round(mins, 1));
             try { _store.SaveMarkers(_markers); } catch { }
+            FixGapMarkersAfterUncleanShutdown();
         }
+    }
+
+    private void FixGapMarkersAfterUncleanShutdown()
+    {
+        try
+        {
+            bool changed = false;
+            for (int i = 0; i < _markers.Count; i++)
+            {
+                Marker mk = _markers[i];
+                if (mk.Kind != "gap") continue;
+                if ((DateTime.Now - mk.Time).TotalMinutes > 60) continue;   // 只看最近一小时
+                if (!CrashReport.DetectUncleanShutdown(mk.Time)) continue;
+                mk.Kind = "down";
+                mk.Note = "宕机";
+                _markers[i] = mk;
+                changed = true;
+                LogLine("marker upgraded to down at " + mk.Time.ToString("HH:mm:ss"));
+            }
+            if (changed) _store.SaveMarkers(_markers);
+        }
+        catch { }
     }
 
     private void LoadRules()

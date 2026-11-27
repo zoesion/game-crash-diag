@@ -4,6 +4,7 @@ using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 // Verdict + report generation, ported from the PowerShell build.
 public static class CrashReport
@@ -80,23 +81,86 @@ public static class CrashReport
     }
 
     /// <summary>True when Windows logged an unexpected shutdown (41), a bugcheck (1001) or an
-    /// unexpected power loss (6008) since the given time - i.e. the machine died, not the app.</summary>
-    public static bool DetectUncleanShutdown(DateTime since)
+    /// unexpected power loss (6008) whose timestamp really matches the moment the app last
+    /// sampled - a stale 6008 from an earlier crash must not label later normal restarts.</summary>
+    public static bool DetectUncleanShutdown(DateTime around)
     {
         try
         {
             var q = new EventLogQuery("System", PathType.LogName,
                 "*[System[(EventID=41 or EventID=1001 or EventID=6008) and TimeCreated[@SystemTime>='" +
-                XmlTime(since) + "']]]");
+                XmlTime(around.AddMinutes(-30)) + "']]]");
             using (var reader = new EventLogReader(q))
             {
-                EventRecord rec = reader.ReadEvent();
-                if (rec != null) { rec.Dispose(); return true; }
+                EventRecord rec;
+                while ((rec = reader.ReadEvent()) != null)
+                {
+                    using (rec)
+                    {
+                        DateTime when = ShutdownTimeOf(rec);
+                        LogDetail("event " + rec.Id + " at " + rec.TimeCreated + " -> shutdown " + when.ToString("HH:mm:ss"));
+                        if (Math.Abs((when - around).TotalMinutes) <= 2) return true;   // 只认"断点前后 2 分钟内"的死机
+                    }
+                }
             }
         }
         catch { }
         return false;
     }
+
+    /// <summary>Best guess of when the machine actually died: the 6008 event carries it as data.</summary>
+    private static DateTime ShutdownTimeOf(EventRecord rec)
+    {
+        // Event 6008 stores "23:32:15" and "2026/11/27" as separate data fields (with bidi marks)
+        try
+        {
+            if (rec.Id == 6008)
+            {
+                var doc = new System.Xml.XmlDocument();
+                doc.LoadXml(rec.ToXml());
+                var nodes = doc.GetElementsByTagName("Data");
+                if (nodes.Count >= 2)
+                {
+                    string time = CleanDigits(nodes[0].InnerText);
+                    string date = CleanDigits(nodes[1].InnerText);
+                    Match mt = Regex.Match(time, @"(\d{1,2}):(\d{2}):(\d{2})");
+                    Match md = Regex.Match(date, @"(\d{4})/(\d{1,2})/(\d{1,2})");
+                    if (mt.Success && md.Success)
+                        return new DateTime(int.Parse(md.Groups[1].Value), int.Parse(md.Groups[2].Value),
+                                            int.Parse(md.Groups[3].Value), int.Parse(mt.Groups[1].Value),
+                                            int.Parse(mt.Groups[2].Value), int.Parse(mt.Groups[3].Value));
+                }
+            }
+        }
+        catch { }
+
+        string msg = "";
+        try { msg = rec.FormatDescription() ?? ""; } catch { }
+        Match m = Regex.Match(msg, @"(\d{1,2}):(\d{2}):(\d{2})\s+on\s+[^\d]*(\d{4})/(\d{1,2})/(\d{1,2})");
+        if (m.Success)
+        {
+            try
+            {
+                return new DateTime(int.Parse(m.Groups[4].Value), int.Parse(m.Groups[5].Value),
+                                    int.Parse(m.Groups[6].Value), int.Parse(m.Groups[1].Value),
+                                    int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value));
+            }
+            catch { }
+        }
+        // 41 / 1001 are written at boot; fall back to the event time
+        return rec.TimeCreated.HasValue ? rec.TimeCreated.Value : DateTime.MinValue;
+    }
+
+    private static string CleanDigits(string s)
+    {
+        var sb = new StringBuilder();
+        foreach (char c in s)
+            if (char.IsDigit(c) || c == ':' || c == '/') sb.Append(c);
+        return sb.ToString();
+    }
+
+    public static string LastDetectionLog = "";
+    private static void LogDetail(string s) { LastDetectionLog += s + "\r\n"; }
 
     /// <summary>Gathers recent event-log text so error codes can be explained in the report.</summary>
     public static string CollectEventText(DateTime since, int max = 6)
