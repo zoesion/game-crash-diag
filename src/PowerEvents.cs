@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Text;
@@ -13,13 +13,16 @@ public sealed class PowerEvents
     public int LowBattery;
     public int SleepCount;
     public int UnexpectedShutdown;
+    public int GpuFaults;                 // nvlddmkm id 13/153: GPU 报错次数
+    public DateTime LastGpuFault = DateTime.MinValue;
+    public string LastGpuFaultText = "";
     public DateTime LastEc = DateTime.MinValue;
     public DateTime LastBattery = DateTime.MinValue;
     public string LastEcDetail = "";
 
     public bool HasProblem
     {
-        get { return EcTimeouts >= 2 || CriticalBattery >= 1 || UnexpectedShutdown >= 1; }
+        get { return EcTimeouts >= 2 || CriticalBattery >= 1 || UnexpectedShutdown >= 1 || GpuFaults >= 50; }
     }
 
     public static PowerEvents Collect(DateTime since)
@@ -62,6 +65,25 @@ public sealed class PowerEvents
                             continue;
                         }
 
+                        if (provider.IndexOf("nvlddmkm", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            if (id == 13 || id == 153 || id == 14 || id == 106)
+                            {
+                                r.GpuFaults++;
+                                if (when > r.LastGpuFault)
+                                {
+                                    r.LastGpuFault = when;
+                                    try
+                                    {
+                                        string msg = rec.FormatDescription() ?? "";
+                                        r.LastGpuFaultText = msg.Length > 140 ? msg.Substring(0, 140) : msg;
+                                    }
+                                    catch { }
+                                }
+                            }
+                            continue;
+                        }
+
                         if (provider.IndexOf("Kernel-Power", StringComparison.OrdinalIgnoreCase) >= 0)
                         {
                             if (id == 524) { r.CriticalBattery++; if (when > r.LastBattery) r.LastBattery = when; }
@@ -87,6 +109,8 @@ public sealed class PowerEvents
         if (LowBattery > 0) sb.AppendLine(string.Format("  低电量事件  : {0} 次", LowBattery));
         if (SleepCount > 0) sb.AppendLine(string.Format("  睡眠/唤醒   : {0} 次", SleepCount));
         if (UnexpectedShutdown > 0) sb.AppendLine(string.Format("  非正常关机  : {0} 次", UnexpectedShutdown));
+        if (GpuFaults > 0) sb.AppendLine(string.Format("  显卡报错    : {0} 次（最近 {1}）", GpuFaults, LastGpuFault.ToString("HH:mm:ss")));
+        if (!string.IsNullOrEmpty(LastGpuFaultText)) sb.AppendLine("    最近一条: " + LastGpuFaultText);
         if (AcpiOther > 0) sb.AppendLine(string.Format("  其他 ACPI   : {0} 次", AcpiOther));
         return sb.ToString();
     }
@@ -98,6 +122,7 @@ public sealed class PowerEvents
         if (EcTimeouts > 0) parts.Add("EC 通信超时 " + EcTimeouts + " 次");
         if (CriticalBattery > 0) parts.Add("临界电量误报 " + CriticalBattery + " 次");
         if (UnexpectedShutdown > 0) parts.Add("非正常关机 " + UnexpectedShutdown + " 次");
+        if (GpuFaults >= 50) parts.Add("显卡驱动报错 " + GpuFaults + " 次（可能是 GPU 不稳定）");
         if (parts.Count == 0) return "";
         return string.Join("，", parts.ToArray()) + "（建议做 EC 复位：关机拔电源，长按电源键 30 秒）";
     }
