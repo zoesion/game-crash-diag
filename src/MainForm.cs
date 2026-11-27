@@ -46,6 +46,8 @@ public sealed class MainForm : Form
     private bool _followLive = true;
 
     private double _lastCpuTemp = 0;
+    private string _cpuTempSource = "";
+    private double _cpuPower;
     private int _lastCpuFreq = 0;
     private DateTime _cpuTempAt = DateTime.MinValue;
     private bool _lhmReady;
@@ -314,6 +316,9 @@ public sealed class MainForm : Form
         };
         var miUpdate = _menu.Items.Add(I18n.T("MenuUpdate", "检查更新"));
         miUpdate.Click += (s, e) => CheckUpdates();
+        var miElev = _menu.Items.Add(I18n.T("MenuElevate", "以管理员身份重启（可读 CPU 封装温度/功耗）"));
+        miElev.Click += (s, e) => RestartElevated();
+        if (IsElevated()) miElev.Text = I18n.T("MenuElevated", "已是管理员权限");
         var miUninst = _menu.Items.Add(I18n.T("MenuUninst", "卸载本程序"));
         miUninst.Click += (s, e) => RunUninstaller();
         var miAbout = _menu.Items.Add(I18n.T("MenuAbout", "关于"));
@@ -519,6 +524,10 @@ public sealed class MainForm : Form
             s.MemUsedMb, s.MemTotalMb > 0 ? s.MemTotalMb.ToString("N0") : "--", (int)s.RamPct,
             Math.Round(s.RamPct / 100.0 * _ramGb, 1), _ramGb,
             ThrottleText(s.Throttle), PStateText(s.PState));
+        if (_cpuPower > 0)
+            _lblDetail.Text += string.Format("   ·   CPU 功耗 {0:0}W", _cpuPower);
+        if (_cpuTempSource == "ACPI")
+            _lblDetail.Text += I18n.T("TempAcpiHint", "   ·   温度源 ACPI");
 
         _lblStats.Text = string.Format("{0} {1:N0}{2}    {3} 0    {4} {5}",
             I18n.T("RowLogCount", "已记录"), _sessionCount, I18n.T("StatsThis", "（本次）"),
@@ -780,7 +789,14 @@ public sealed class MainForm : Form
             {
                 try { t = LhmBridge.ReadCpuTemp(); } catch { }
             }
+            _cpuTempSource = (double.IsNaN(t) || t <= 0) ? "ACPI" : "封装";
             if (double.IsNaN(t) || t <= 0) t = ReadAcpiTemp();
+            try
+            {
+                double cp = LhmBridge.ReadCpuPower();
+                _cpuPower = double.IsNaN(cp) ? 0 : cp;
+            }
+            catch { _cpuPower = 0; }
             if (!double.IsNaN(t) && t > 0) _lastCpuTemp = Math.Round(t, 1);
             _cpuTempAt = s.Time;
         }
@@ -1769,6 +1785,40 @@ public sealed class MainForm : Form
     {
         if (_lblBanner != null) _lblBanner.Visible = false;
         _bannerReport = "";
+    }
+
+    private static bool IsElevated()
+    {
+        try
+        {
+            var id = System.Security.Principal.WindowsIdentity.GetCurrent();
+            var p = new System.Security.Principal.WindowsPrincipal(id);
+            return p.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
+    }
+
+    private void RestartElevated()
+    {
+        if (IsElevated())
+        {
+            MessageBox.Show("当前已经是管理员权限，可以直接读取 CPU 封装温度。", Text);
+            return;
+        }
+        try
+        {
+            var psi = new ProcessStartInfo(Application.ExecutablePath, "-Tray");
+            psi.Verb = "runas";
+            psi.UseShellExecute = true;
+            Process.Start(psi);
+            LogLine("restart elevated");
+            _exitFlag = true;
+            Close();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("提权失败（可能点了取消）：" + ex.Message, Text);
+        }
     }
 
     private void OpenLatestReport()
