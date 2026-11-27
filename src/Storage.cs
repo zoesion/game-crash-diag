@@ -70,6 +70,36 @@ public sealed class Storage
     private string HistoryFile { get { return Path.Combine(HistoryDir, "samples.csv"); } }
     private string MarkerFile { get { return Path.Combine(HistoryDir, "markers.csv"); } }
 
+    private int _historyWrites;
+
+    /// <summary>Keeps the store bounded: when it passes 8 MB, keep only the last 24 hours.</summary>
+    private void CompactHistory()
+    {
+        try
+        {
+            if (!File.Exists(HistoryFile)) return;
+            if (new FileInfo(HistoryFile).Length < 8L * 1024 * 1024) return;
+            DateTime cut = DateTime.Now.AddHours(-24);
+            var keep = new List<string>();
+            using (var fs = new FileStream(HistoryFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var sr = new StreamReader(fs, Encoding.UTF8))
+            {
+                string line;
+                while ((line = sr.ReadLine()) != null)
+                {
+                    string[] p = line.Split('|');
+                    if (p.Length < 2) continue;
+                    DateTime t;
+                    if (!DateTime.TryParseExact(p[0], "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture,
+                                                DateTimeStyles.None, out t)) continue;
+                    if (t >= cut) keep.Add(line);
+                }
+            }
+            File.WriteAllLines(HistoryFile, keep.ToArray(), new UTF8Encoding(false));
+        }
+        catch { }
+    }
+
     public void AppendHistory(Sample s)
     {
         try
@@ -80,6 +110,8 @@ public sealed class Storage
                 s.Time, s.GpuTemp, s.GpuPower, s.ClockSm, s.UtilGpu, (long)s.MemUsedMb,
                 s.CpuTemp, s.CpuMhz, s.CpuLoad, s.ActiveCores, s.TotalCores, (int)s.RamPct, s.ClockMem);
             File.AppendAllText(HistoryFile, line + Environment.NewLine, new UTF8Encoding(false));
+            _historyWrites++;
+            if (_historyWrites % 7200 == 0) CompactHistory();   // 1 小时检查一次
         }
         catch { }
     }

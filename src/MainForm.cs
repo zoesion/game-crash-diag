@@ -774,6 +774,8 @@ public sealed class MainForm : Form
         for (int i = 0; i < n; i++) _cTime.Add(_tTime[_tTime.Count - n + i]);
         if (n > 0)
         {
+            LogLine("restored " + n + " points, last=" + _tTime[_tTime.Count - 1].ToString("yyyy-MM-dd HH:mm:ss") +
+                    ", gapMin=" + Math.Round((DateTime.Now - _tTime[_tTime.Count - 1]).TotalMinutes, 1));
             _lblHint.Text = I18n.T("HintNoGame", "未检测到游戏，正在做系统监控") +
                             string.Format(I18n.T("RestoredHint", "（接上次 {0} 点）"), n);
             DateTime last = _tTime[_tTime.Count - 1];
