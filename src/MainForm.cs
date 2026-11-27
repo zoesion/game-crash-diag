@@ -559,6 +559,28 @@ public sealed class MainForm : Form
             _lblHint.ForeColor = CDim;
         }
 
+        if ((DateTime.Now - _battCheck).TotalSeconds >= 5)
+        {
+            _battCheck = DateTime.Now;
+            try
+            {
+                var mo = new System.Management.ManagementObjectSearcher(
+                    "root\\wmi", "SELECT Voltage,DischargeRate FROM BatteryStatus");
+                foreach (System.Management.ManagementObject o in mo.Get())
+                {
+                    double v = Convert.ToDouble(o["Voltage"]) / 1000.0;      // mV -> V
+                    double dr = Convert.ToDouble(o["DischargeRate"]);
+                    if (v > 5)
+                    {
+                        if (_battVMin == 0 || v < _battVMin) _battVMin = v;
+                        if (v > _battVMax) _battVMax = v;
+                    }
+                    if (dr > _battDischargeMax) _battDischargeMax = dr;
+                }
+            }
+            catch { }
+        }
+
         if (_game != null && (DateTime.Now - _featureCheck).TotalSeconds >= 20)
         {
             _featureCheck = DateTime.Now;
@@ -666,6 +688,7 @@ public sealed class MainForm : Form
             _gameGpuSum = 0; _gameCpuSum = 0; _gameGpuMax = 0; _gameCount = 0;
             _stats.Reset();
             _gameFeatures = "";
+            _battVMin = 0; _battVMax = 0; _battDischargeMax = 0;
             _featureCheck = DateTime.MinValue;
             ClearReportBanner();
             _tail.Clear();
@@ -701,7 +724,8 @@ public sealed class MainForm : Form
                 GameCpuAvg = _gameCount > 0 ? _gameCpuSum / _gameCount : 0,
                 Stats = _stats,
                 Features = _gameFeatures,
-                PowerSummary = SafePowerSummary()
+                PowerSummary = SafePowerSummary(),
+                BatteryLine = BatteryLine()
             };
             string report = CrashReport.Write(Path.Combine(Path.GetTempPath(), "gcd-test-reports"), input);
             string snap = verdict.IsCrash
@@ -903,6 +927,17 @@ public sealed class MainForm : Form
     }
 
     private string _powerWarn = "";
+
+    private string BatteryLine()
+    {
+        if (_battVMin <= 0) return "";
+        string verdict = _battVMin < 14.4 ? "   ← 负载下电压偏低，电池可能已老化"
+                                          : "   ← 电压稳定";
+        return string.Format("  电池电压: {0:0.00} ~ {1:0.00} V（负载中），最大放电 {2:0} mW{3}",
+            _battVMin, _battVMax, _battDischargeMax, verdict);
+    }
+    private double _battVMin, _battVMax, _battDischargeMax;
+    private DateTime _battCheck = DateTime.MinValue;
 
     private string SafePowerSummary()
     {

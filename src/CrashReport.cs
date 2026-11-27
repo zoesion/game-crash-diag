@@ -227,6 +227,7 @@ public static class CrashReport
         public SessionStats Stats;
         public string Features = "";
         public string PowerSummary = "";
+        public string BatteryLine = "";
     }
 
     public static string Write(string root, ReportInput input)
@@ -297,6 +298,7 @@ public static class CrashReport
         {
             sb.AppendLine("  --- 电源 / EC 事件（本局期间）---");
             sb.Append(input.PowerSummary);
+            if (!string.IsNullOrEmpty(input.BatteryLine)) sb.AppendLine(input.BatteryLine);
             sb.AppendLine();
         }
 
