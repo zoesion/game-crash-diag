@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -624,14 +624,6 @@ public sealed class MainForm : Form
         _lastCpuTemp = s.CpuTemp;
         _lastGpuPower = s.GpuPower;
         _lastCpuFreq = s.CpuMhz;
-        try
-        {
-            string tip = string.Format("GPU {0}°C · CPU {1}°C",
-                s.GpuTemp > 0 ? s.GpuTemp.ToString("0") : "--",
-                s.CpuTemp > 0 ? s.CpuTemp.ToString("0") : "--");
-            if (_tray.Text != tip) _tray.Text = tip;
-        }
-        catch { }
         try
         {
             Point cp = Cursor.Position;
