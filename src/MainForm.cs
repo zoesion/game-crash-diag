@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -350,7 +350,7 @@ public sealed class MainForm : Form
             LogLine("tray icon fallback to system icon");
         }
         LogLine("tray initialised, icon=" + (_tray.Icon != null ? _tray.Icon.Width + "x" + _tray.Icon.Height : "null"));
-        _tray.Text = Text;
+        _tray.Text = "";          // 原生提示留空，只显示我们自己的两行彩色浮窗
         _tray.Visible = true;
         _tray.MouseMove += (s, e) => ShowTrayTip();
         _tray.DoubleClick += (s, e) => ShowFromTray();
