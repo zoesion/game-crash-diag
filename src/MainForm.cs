@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -1956,7 +1956,7 @@ public sealed class MainForm : Form
         }
         try
         {
-            var psi = new ProcessStartInfo(Application.ExecutablePath, "-Tray");
+            var psi = new ProcessStartInfo(Application.ExecutablePath, "-Tray -Elevated");
             psi.Verb = "runas";
             psi.UseShellExecute = true;
             Process.Start(psi);

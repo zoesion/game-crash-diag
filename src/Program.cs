@@ -71,6 +71,7 @@ internal static class Program
         bool trayTest = false;
         bool bannerTest = false;
         bool powerTest = false;
+        bool elevatedRestart = false;
         bool shutdownTest = false;
         string shotPath = "";
         for (int i = 0; i < args.Length; i++)
@@ -89,6 +90,7 @@ internal static class Program
             else if (args[i] == "-TestTray") trayTest = true;
             else if (args[i] == "-TestBanner") bannerTest = true;
             else if (args[i] == "-TestPower") powerTest = true;
+            else if (args[i] == "-Elevated") elevatedRestart = true;
             else if (args[i] == "-TestShutdown") shutdownTest = true;
             else if (args[i] == "-Shot" && i + 1 < args.Length) shotPath = args[++i];
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
@@ -111,11 +113,25 @@ internal static class Program
         catch { }
 
         string mutexName = "Local\\GameCrashDiag_v6_" + (tag.Length > 0 ? tag : "main");
-        bool created;
-        using (var mutex = new Mutex(true, mutexName, out created))
+        bool created = false;
+        Mutex mutex = null;
+        if (elevatedRestart) System.Threading.Thread.Sleep(2000);
+        // 提权重启时旧实例还在退出中，给它几秒时间释放互斥体，否则新实例会静默退出
+        for (int attempt = 0; attempt < 10; attempt++)
         {
-            if (!created) return 0;
-
+            mutex = new Mutex(true, mutexName, out created);
+            if (created) break;
+            try { mutex.Dispose(); } catch { }
+            mutex = null;
+            System.Threading.Thread.Sleep(500);
+        }
+        if (!created)
+        {
+            Say("另一个实例正在运行，已退出");
+            return 0;
+        }
+        using (mutex)
+        {
             // DPI awareness must be set before any user32 call, otherwise the window is bitmap-scaled
             try { Native.SetProcessDPIAware(); } catch { }
             if (uiTest) Say("DPI awareness: " + Native.GetAwareness());
