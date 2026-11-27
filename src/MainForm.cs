@@ -780,16 +780,15 @@ public sealed class MainForm : Form
                             string.Format(I18n.T("RestoredHint", "（接上次 {0} 点）"), n);
             DateTime last = _tTime[_tTime.Count - 1];
             double mins = (DateTime.Now - last).TotalMinutes;
-            if (mins >= 2)
-            {
-                bool dead = false;
-                try { dead = CrashReport.DetectUncleanShutdown(last.AddMinutes(-2)); } catch { }
-                string note = dead ? "宕机"
-                    : (mins >= 60 ? "隔 " + Math.Round(mins / 60.0, 1) + " 小时" : "隔 " + (int)mins + " 分钟");
-                _markers.Add(new Marker { Time = last, Kind = dead ? "down" : "gap", Note = note });
-                LogLine("marker added: kind=" + (dead ? "down" : "gap") + " note=" + note);
-                try { _store.SaveMarkers(_markers); } catch { }
-            }
+            // 每次接续都画一条分界线（哪怕只断了 10 秒），这样"上一次会话到今天"看得见
+            bool dead = false;
+            if (mins >= 2) { try { dead = CrashReport.DetectUncleanShutdown(last.AddMinutes(-2)); } catch { } }
+            string note = dead ? "宕机"
+                : (mins >= 60 ? "隔 " + Math.Round(mins / 60.0, 1) + " 小时"
+                : (mins >= 2 ? "隔 " + (int)mins + " 分钟" : "续接"));
+            _markers.Add(new Marker { Time = last, Kind = dead ? "down" : "gap", Note = note });
+            LogLine("marker added: kind=" + (dead ? "down" : "gap") + " note=" + note + " gapMin=" + Math.Round(mins, 1));
+            try { _store.SaveMarkers(_markers); } catch { }
         }
     }
 
