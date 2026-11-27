@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -274,6 +274,8 @@ public sealed class MainForm : Form
         _miStart.Click += (s, e) => ToggleLogging();
         var miLog = _menu.Items.Add(I18n.T("MenuLogs", "打开数据目录"));
         miLog.Click += (s, e) => OpenPath(_store.LogDir);
+        var miLast = _menu.Items.Add(I18n.T("MenuLastReport", "打开最近一份报告"));
+        miLast.Click += (s, e) => OpenLatestReport();
         var miRep = _menu.Items.Add(I18n.T("MenuReports", "打开报告目录（崩溃 / 对局）"));
         miRep.Click += (s, e) => OpenPath(Path.Combine(_root, "reports"));
         var miDiag = _menu.Items.Add(I18n.T("MenuDiag", "诊断报告"));
@@ -670,6 +672,7 @@ public sealed class MainForm : Form
                     var card = new CrashCard("游戏崩溃诊断器",
                         string.Format("{0}  (依据: {1})", closed.Name, verdict.Reason), report, snap);
                     card.Show();
+                    LogLine("crash card shown: " + Path.GetFileName(report));
                 }
                 catch { }
             }
@@ -684,6 +687,15 @@ public sealed class MainForm : Form
                 catch { }
                 _lblHint.Text = "游戏正常退出，报告已生成: " + Path.GetFileName(report) + tip;
                 _lblHint.ForeColor = CDim;
+                try
+                {
+                    string brief = string.Format("{0} · {1} 分钟 · CPU 最高 {2:0}°C · GPU 最高 {3:0}°C · 显存峰值 {4:N0} MB",
+                        closed.Name, Math.Round((exitTime - _gameStart).TotalMinutes), _stats.CpuTempMax, _stats.GpuTempMax, _stats.VramMax);
+                    var card = new CrashCard("游戏崩溃诊断器", brief, report, "", true);
+                    card.Show();
+                    LogLine("session card shown: " + Path.GetFileName(report));
+                }
+                catch { }
             }
         }
     }
@@ -1619,6 +1631,20 @@ public sealed class MainForm : Form
         _tray.BalloonTipTitle = Text;
         _tray.BalloonTipText = I18n.T("TrayBalloon", "已缩到托盘，仍在后台记录");
         try { _tray.ShowBalloonTip(1200); } catch { }
+    }
+
+    private void OpenLatestReport()
+    {
+        try
+        {
+            string dir = Path.Combine(_root, "reports");
+            if (!Directory.Exists(dir)) { MessageBox.Show("还没有任何报告。", Text); return; }
+            var files = new DirectoryInfo(dir).GetFiles("*.txt");
+            if (files.Length == 0) { MessageBox.Show("还没有任何报告。", Text); return; }
+            Array.Sort(files, delegate (FileInfo a, FileInfo b) { return b.LastWriteTime.CompareTo(a.LastWriteTime); });
+            Process.Start("notepad.exe", "\"" + files[0].FullName + "\"");
+        }
+        catch (Exception ex) { MessageBox.Show("打开失败: " + ex.Message, Text); }
     }
 
     private void ShowTrayMenu()

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -8,6 +8,9 @@ using System.Windows.Forms;
 public sealed class CrashCard : Form
 {
     public CrashCard(string title, string verdict, string reportPath, string snapshotPath)
+        : this(title, verdict, reportPath, snapshotPath, false) { }
+
+    public CrashCard(string title, string verdict, string reportPath, string snapshotPath, bool normalSession)
     {
         Text = title;
         ClientSize = new Size(420, 210);
@@ -20,7 +23,8 @@ public sealed class CrashCard : Form
         AutoScaleMode = AutoScaleMode.None;
 
         var lblIcon = new Label();
-        lblIcon.Text = "⚠";
+        lblIcon.Text = normalSession ? "✓" : "⚠";
+        if (normalSession) lblIcon.ForeColor = Color.FromArgb(86, 214, 178);
         lblIcon.Font = new Font("Segoe UI Symbol", 20f, FontStyle.Bold);
         lblIcon.ForeColor = Color.FromArgb(232, 92, 92);
         lblIcon.AutoSize = true;
@@ -28,7 +32,7 @@ public sealed class CrashCard : Form
         Controls.Add(lblIcon);
 
         var lblHead = new Label();
-        lblHead.Text = "检测到游戏崩溃";
+        lblHead.Text = normalSession ? "对局结束，报告已生成" : "检测到游戏崩溃";
         lblHead.Font = new Font("Microsoft YaHei UI", 12f, FontStyle.Bold);
         lblHead.AutoSize = true;
         lblHead.Location = new Point(54, 18);
