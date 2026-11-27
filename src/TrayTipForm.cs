@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -10,6 +10,7 @@ public sealed class TrayTipForm : Form
     private readonly Label _lblGpu;
     private readonly Label _lblCpu;
     private readonly Timer _hideTimer;
+    private Point _anchor;
 
     private static readonly Color Normal = Color.FromArgb(235, 238, 245);
     private static readonly Color Warm = Color.FromArgb(240, 200, 90);
@@ -52,7 +53,10 @@ public sealed class TrayTipForm : Form
         {
             Point p = Cursor.Position;
             Rectangle r = new Rectangle(Location.X, Location.Y, Width, Height);
-            if (!r.Contains(p)) { _hideTimer.Stop(); Hide(); }
+            // 鼠标还停在图标上（锚点附近）或已经移到浮窗里，都保持显示
+            double dx = p.X - _anchor.X, dy = p.Y - _anchor.Y;
+            bool nearAnchor = Math.Abs(dx) <= 60 && Math.Abs(dy) <= 60;
+            if (!r.Contains(p) && !nearAnchor) { _hideTimer.Stop(); Hide(); }
         };
     }
 
@@ -95,6 +99,7 @@ public sealed class TrayTipForm : Form
 
     public void ShowAt(Point cursor)
     {
+        _anchor = cursor;
         Screen scr = Screen.FromPoint(cursor);
         Rectangle wa = scr.WorkingArea;
         int x = cursor.X - Width / 2;

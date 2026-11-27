@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -68,6 +68,8 @@ public sealed class MainForm : Form
     private NotifyIcon _tray;
     private TrayTipForm _trayTip;
     private double _lastGpuTemp, _lastGpuPower;
+    private DateTime _trayDiag = DateTime.MinValue;
+    private bool _tipWasVisible;
     private ContextMenuStrip _trayMenu;
     private ContextMenuStrip _menu;
     private Bitmap _bmpFront, _bmpBack, _bmpCpuFront, _bmpCpuBack;
@@ -616,6 +618,27 @@ public sealed class MainForm : Form
             _lastBeat = DateTime.Now;
             LogLine("alive samples=" + _sessionCount + " mem=" + (Environment.WorkingSet / 1048576) + "MB");
         }
+
+        // 记录最新数值，托盘提示与悬浮窗都用它
+        _lastGpuTemp = s.GpuTemp;
+        _lastCpuTemp = s.CpuTemp;
+        _lastGpuPower = s.GpuPower;
+        _lastCpuFreq = s.CpuMhz;
+        try
+        {
+            string tip = string.Format("GPU {0}°C · CPU {1}°C",
+                s.GpuTemp > 0 ? s.GpuTemp.ToString("0") : "--",
+                s.CpuTemp > 0 ? s.CpuTemp.ToString("0") : "--");
+            if (_tray.Text != tip) _tray.Text = tip;
+        }
+        catch { }
+        try
+        {
+            Point cp = Cursor.Position;
+            if (InTrayZone(cp)) ShowTrayTip();
+            else HideTrayTip();
+        }
+        catch { }
 
         if (_followLive) _shiftPts = 0;
         Draw();
@@ -1980,6 +2003,28 @@ public sealed class MainForm : Form
         return sb.ToString();
     }
 
+    private static bool InTrayZone(Point p)
+    {
+        try
+        {
+            Screen scr = Screen.FromPoint(p);
+            Rectangle b = scr.Bounds;
+            if (b.Width <= 0 || b.Height <= 0) return false;
+
+            // 不依赖 WorkingArea：任务栏自动隐藏时 WorkingArea 等于整屏。
+            // 用"屏幕最底部约 4% 高 + 右侧 28% 宽"作为托盘区域。
+            int strip = Math.Max(48, (int)Math.Round(b.Height * 0.04));
+            int rightPart = (int)Math.Round(b.Width * 0.28);
+            return p.Y >= b.Bottom - strip && p.X >= b.Right - rightPart;
+        }
+        catch { return false; }
+    }
+
+    private void HideTrayTip()
+    {
+        try { if (_trayTip != null && _trayTip.Visible) _trayTip.Hide(); } catch { }
+    }
+
     private void ShowTrayTip()
     {
         try
@@ -1987,6 +2032,7 @@ public sealed class MainForm : Form
             if (_trayTip == null) _trayTip = new TrayTipForm();
             _trayTip.SetValues(_lastGpuTemp, _lastGpuPower, _lastCpuTemp, _lastCpuFreq);
             _trayTip.ShowAt(Cursor.Position);
+            if (!_tipWasVisible) { _tipWasVisible = true; LogLine("tray tip shown"); }
         }
         catch (Exception ex) { LogLine("tray tip failed: " + ex.Message); }
     }
