@@ -225,6 +225,7 @@ public static class CrashReport
         public string EventText = "";
         public double IdleGpuTemp, IdleCpuTemp, GameGpuAvg, GameGpuMax, GameCpuAvg;
         public SessionStats Stats;
+        public string Features = "";
     }
 
     public static string Write(string root, ReportInput input)
@@ -290,6 +291,10 @@ public static class CrashReport
             foreach (string o in input.Stats.Observations(dur)) sb.AppendLine("  · " + o);
             sb.AppendLine();
         }
+
+        sb.AppendLine("  --- 图形特性（崩溃时已加载）---");
+        sb.AppendLine("  " + (string.IsNullOrEmpty(input.Features) ? "（未检测到 DLSS / 帧生成 / Reflex 模块）" : input.Features));
+        sb.AppendLine();
 
         sb.AppendLine("  --- 错误码解读 ---");
         sb.Append(ErrorCodes.Explain(evidence));

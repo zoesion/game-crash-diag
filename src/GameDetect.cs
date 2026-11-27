@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -55,6 +55,35 @@ public static class GameDetect
         public DateTime StartTime;
     }
 
+
+    /// <summary>Looks at the loaded modules of the running game to see which upscaling /
+    /// frame generation features are active. Useful when crashes only happen with DLSS on.</summary>
+    public static string DetectFeatures(int pid)
+    {
+        var found = new List<string>();
+        try
+        {
+            using (var p = System.Diagnostics.Process.GetProcessById(pid))
+            {
+                foreach (System.Diagnostics.ProcessModule m in p.Modules)
+                {
+                    string n = m.ModuleName.ToLowerInvariant();
+                    if (n.Contains("nvngx_dlssg")) AddOnce(found, "DLSS 帧生成");
+                    else if (n.Contains("nvngx_dlssd")) AddOnce(found, "DLSS 光线重建");
+                    else if (n.Contains("nvngx_dlss")) AddOnce(found, "DLSS 超分辨率");
+                    else if (n.Contains("nvngx")) AddOnce(found, "DLSS");
+                    else if (n.Contains("sl.reflex") || n.Contains("nvreflex")) AddOnce(found, "Reflex");
+                }
+            }
+        }
+        catch { }
+        return string.Join(", ", found.ToArray());
+    }
+
+    private static void AddOnce(List<string> list, string item)
+    {
+        if (!list.Contains(item)) list.Add(item);
+    }
     public static Hit Find()
     {
         System.Drawing.Rectangle screen = System.Windows.Forms.Screen.PrimaryScreen.Bounds;

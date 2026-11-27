@@ -48,6 +48,8 @@ public sealed class MainForm : Form
     private double _lastCpuTemp = 0;
     private string _cpuTempSource = "";
     private double _cpuPower;
+    private string _gameFeatures = "";
+    private DateTime _featureCheck = DateTime.MinValue;
     private bool _tsRunning = true;
     private DateTime _tsChecked = DateTime.MinValue;
     private int _lastCpuFreq = 0;
@@ -556,6 +558,21 @@ public sealed class MainForm : Form
             _lblHint.ForeColor = CDim;
         }
 
+        if (_game != null && (DateTime.Now - _featureCheck).TotalSeconds >= 20)
+        {
+            _featureCheck = DateTime.Now;
+            try
+            {
+                string feats = GameDetect.DetectFeatures(_game.Pid);
+                if (feats != _gameFeatures)
+                {
+                    _gameFeatures = feats;
+                    LogLine("game features: " + (string.IsNullOrEmpty(feats) ? "(none)" : feats));
+                }
+            }
+            catch { }
+        }
+
         if ((DateTime.Now - _tsChecked).TotalSeconds >= 15)
         {
             _tsChecked = DateTime.Now;
@@ -647,6 +664,8 @@ public sealed class MainForm : Form
             _gameStart = hit.StartTime > DateTime.Now.AddDays(-1) ? hit.StartTime : DateTime.Now;
             _gameGpuSum = 0; _gameCpuSum = 0; _gameGpuMax = 0; _gameCount = 0;
             _stats.Reset();
+            _gameFeatures = "";
+            _featureCheck = DateTime.MinValue;
             ClearReportBanner();
             _tail.Clear();
             _store.StartLog(SafeName(hit.Name), 500);
@@ -679,7 +698,8 @@ public sealed class MainForm : Form
                 GameGpuAvg = _gameCount > 0 ? _gameGpuSum / _gameCount : 0,
                 GameGpuMax = _gameGpuMax,
                 GameCpuAvg = _gameCount > 0 ? _gameCpuSum / _gameCount : 0,
-                Stats = _stats
+                Stats = _stats,
+                Features = _gameFeatures
             };
             string report = CrashReport.Write(Path.Combine(Path.GetTempPath(), "gcd-test-reports"), input);
             string snap = verdict.IsCrash
