@@ -138,7 +138,7 @@ public sealed class MainForm : Form
         btnMenu.Bounds = new Rectangle(S(6), S(8), S(38), S(34));
         Controls.Add(btnMenu);
 
-        _lblTitle = MakeLabel(I18n.T("AppTitle", "游戏崩溃诊断器"), new Point(S(52), S(2)), 17f, CText, true);
+        _lblTitle = MakeLabel(I18n.T("AppTitle", "游戏崩溃诊断器"), new Point(S(52), S(2)), 17f, CDim, true);
         _lblGpuName = MakeLabel("GPU", new Point(S(8), S(38)), 9.5f, CDim, false);
         _lblStatus = MakeLabel("● --", new Point(S(620), S(12)), 9f, CAccent, false);
         _lblStatus.AutoSize = false;
