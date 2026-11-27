@@ -555,6 +555,7 @@ public sealed class MainForm : Form
             _lblStatus.Text = "● " + I18n.T("StatusRec", "记录中");
             _lblStatus.ForeColor = CAccent;
             _lblHint.Text = I18n.T("HintNoGame", "未检测到游戏，正在做系统监控（logs\\system\\）");
+            if (_powerWarn != "") _lblHint.Text += "   ·   ⚠ " + _powerWarn;
             _lblHint.ForeColor = CDim;
         }
 
@@ -699,7 +700,8 @@ public sealed class MainForm : Form
                 GameGpuMax = _gameGpuMax,
                 GameCpuAvg = _gameCount > 0 ? _gameCpuSum / _gameCount : 0,
                 Stats = _stats,
-                Features = _gameFeatures
+                Features = _gameFeatures,
+                PowerSummary = SafePowerSummary()
             };
             string report = CrashReport.Write(Path.Combine(Path.GetTempPath(), "gcd-test-reports"), input);
             string snap = verdict.IsCrash
@@ -896,7 +898,36 @@ public sealed class MainForm : Form
             LogLine("marker added: kind=" + (dead ? "down" : "gap") + " note=" + note + " gapMin=" + Math.Round(mins, 1));
             try { _store.SaveMarkers(_markers); } catch { }
             FixGapMarkersAfterUncleanShutdown();
+            CheckPowerEvents();
         }
+    }
+
+    private string _powerWarn = "";
+
+    private string SafePowerSummary()
+    {
+        try
+        {
+            PowerEvents pe = PowerEvents.Collect(_gameStart.AddMinutes(-5));
+            return pe.Summary();
+        }
+        catch { return "  （读取电源事件失败）" + Environment.NewLine; }
+    }
+
+    private void CheckPowerEvents()
+    {
+        try
+        {
+            PowerEvents pe = PowerEvents.Collect(DateTime.Now.AddHours(-2));
+            LogLine(string.Format("power events: ecTimeouts={0} criticalBattery={1} sleeps={2} unclean={3}",
+                pe.EcTimeouts, pe.CriticalBattery, pe.SleepCount, pe.UnexpectedShutdown));
+            if (pe.HasProblem)
+            {
+                _powerWarn = string.Format("EC 超时 {0} 次 / 临界电量误报 {1} 次（建议 EC 复位）", pe.EcTimeouts, pe.CriticalBattery);
+                LogLine("power events warning: " + _powerWarn);
+            }
+        }
+        catch (Exception ex) { LogLine("power events check failed: " + ex.Message); }
     }
 
     private void FixGapMarkersAfterUncleanShutdown()

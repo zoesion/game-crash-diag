@@ -226,6 +226,7 @@ public static class CrashReport
         public double IdleGpuTemp, IdleCpuTemp, GameGpuAvg, GameGpuMax, GameCpuAvg;
         public SessionStats Stats;
         public string Features = "";
+        public string PowerSummary = "";
     }
 
     public static string Write(string root, ReportInput input)
@@ -289,6 +290,13 @@ public static class CrashReport
 
             sb.AppendLine("  --- 注意事项 ---");
             foreach (string o in input.Stats.Observations(dur)) sb.AppendLine("  · " + o);
+            sb.AppendLine();
+        }
+
+        if (!string.IsNullOrEmpty(input.PowerSummary))
+        {
+            sb.AppendLine("  --- 电源 / EC 事件（本局期间）---");
+            sb.Append(input.PowerSummary);
             sb.AppendLine();
         }
 

@@ -70,6 +70,7 @@ internal static class Program
         bool scrollTest = false;
         bool trayTest = false;
         bool bannerTest = false;
+        bool powerTest = false;
         bool shutdownTest = false;
         string shotPath = "";
         for (int i = 0; i < args.Length; i++)
@@ -87,6 +88,7 @@ internal static class Program
             else if (args[i] == "-TestScroll") scrollTest = true;
             else if (args[i] == "-TestTray") trayTest = true;
             else if (args[i] == "-TestBanner") bannerTest = true;
+            else if (args[i] == "-TestPower") powerTest = true;
             else if (args[i] == "-TestShutdown") shutdownTest = true;
             else if (args[i] == "-Shot" && i + 1 < args.Length) shotPath = args[++i];
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
@@ -156,6 +158,20 @@ internal static class Program
                 Say("测试：一个普通时刻（23:50）应该判为否");
                 Say("  23:50 -> " + CrashReport.DetectUncleanShutdown(new DateTime(2026, 11, 27, 23, 50, 0)));
                 Say("  23:37 -> " + CrashReport.DetectUncleanShutdown(new DateTime(2026, 11, 27, 23, 37, 9)));
+                return 0;
+            }
+
+            if (powerTest)
+            {
+                DateTime since = DateTime.Now.AddHours(-24);
+                Say("统计最近 24 小时的电源/EC 事件：");
+                PowerEvents pe = PowerEvents.Collect(since);
+                Say("  EC 超时: " + pe.EcTimeouts + "   临界电量: " + pe.CriticalBattery +
+                    "   低电量: " + pe.LowBattery + "   睡眠: " + pe.SleepCount + "   非正常关机: " + pe.UnexpectedShutdown);
+                Say("  有问题: " + pe.HasProblem);
+                Say(pe.Summary());
+                if (pe.HasProblem) Say("  提示文案: " + pe.WarnText());
+                if (!string.IsNullOrEmpty(pe.LastEcDetail)) Say("  最近一条 EC 消息: " + pe.LastEcDetail);
                 return 0;
             }
 
@@ -300,6 +316,7 @@ internal static class Program
                    84 + rndStats.Next(0, 13), 55 + rndStats.Next(0, 25), 3400 + rndStats.Next(0, 400),
                    18 + rndStats.Next(0, 3), (ulong)(i % 7 == 0 ? 4UL : 0UL));
         input.Stats = st;
+        try { input.PowerSummary = PowerEvents.Collect(DateTime.Now.AddHours(-2)).Summary(); } catch { }
         var rnd = new Random(7);
         for (int i = 0; i < 50; i++)
         {
