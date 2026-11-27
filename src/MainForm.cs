@@ -512,9 +512,24 @@ public sealed class MainForm : Form
             I18n.T("RowLogCount", "已记录"), _sessionCount, I18n.T("StatsThis", "（本次）"),
             I18n.T("RowReports", "报告"), I18n.T("RowFile", "文件"), Path.GetFileName(_store.LogFile));
 
-        _lblStatus.Text = "● " + I18n.T("StatusRec", "记录中");
-        _lblStatus.ForeColor = CAccent;
-        _lblHint.Text = I18n.T("HintNoGame", "未检测到游戏，正在做系统监控（logs\\system\\）");
+        // 状态栏每帧刷新：游戏中提示游戏名和目录，否则提示系统监控
+        if (_game != null)
+        {
+            double mins = Math.Max(0, (DateTime.Now - _gameStart).TotalMinutes);
+            _lblStatus.Text = "● " + I18n.T("StatusGame", "游戏记录中");
+            _lblStatus.ForeColor = CAccent;
+            _lblHint.Text = string.Format(
+                I18n.T("HintGameRun", "已记录 {0} 分钟 · {1} → logs\\{2}\\ · 退出游戏后自动生成会话报告"),
+                (int)mins, _game.Name, SafeName(_game.Name));
+            _lblHint.ForeColor = CAccent;
+        }
+        else
+        {
+            _lblStatus.Text = "● " + I18n.T("StatusRec", "记录中");
+            _lblStatus.ForeColor = CAccent;
+            _lblHint.Text = I18n.T("HintNoGame", "未检测到游戏，正在做系统监控（logs\\system\\）");
+            _lblHint.ForeColor = CDim;
+        }
 
         if ((DateTime.Now - _lastBeat).TotalSeconds >= 60)
         {
@@ -596,12 +611,14 @@ public sealed class MainForm : Form
             _lblHint.Text = string.Format(I18n.T("HintGame", "已检测到游戏 {0}，正在记录到 logs\\{1}\\"),
                 hit.Name, SafeName(hit.Name));
             _lblHint.ForeColor = CAccent;
+            LogLine("game start: " + hit.Name + " -> logs\\" + SafeName(hit.Name));
         }
         else if (hit == null && _game != null)
         {
             var closed = _game;
             _game = null;
             DateTime exitTime = DateTime.Now;
+            LogLine("game end: " + closed.Name + " after " + Math.Round((exitTime - _gameStart).TotalMinutes, 1) + " min");
 
             var verdict = CrashReport.Test(exitTime, closed.Name);
             var input = new CrashReport.ReportInput
