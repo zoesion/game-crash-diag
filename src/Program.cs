@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -12,6 +12,32 @@ internal static class Program
         try { return Native.GetAwareness(); } catch { return "?"; }
     }
 
+    // winexe has no console: write UTF-8 bytes to stdout so redirected capture stays readable
+    private static System.IO.TextWriter _out;
+
+    private static System.IO.TextWriter Out
+    {
+        get
+        {
+            if (_out == null)
+            {
+                try
+                {
+                    var sw = new System.IO.StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
+                    sw.AutoFlush = true;
+                    _out = sw;
+                }
+                catch { _out = System.IO.TextWriter.Null; }
+            }
+            return _out;
+        }
+    }
+
+    private static void Say(string s)
+    {
+        try { Out.WriteLine(s); } catch { }
+    }
+
     private static string Root
     {
         get { return Path.GetDirectoryName(Application.ExecutablePath); }
@@ -20,7 +46,8 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        Console.OutputEncoding = Encoding.UTF8;
+        // winexe 没有控制台，设置编码会抛 IOException，忽略即可
+        try { Console.OutputEncoding = Encoding.UTF8; } catch { }
         bool selfTest = false;
         int collectSeconds = 0;
         bool uiTest = false;
@@ -70,7 +97,7 @@ internal static class Program
 
             // DPI awareness must be set before any user32 call, otherwise the window is bitmap-scaled
             try { Native.SetProcessDPIAware(); } catch { }
-            if (uiTest) Console.WriteLine("DPI awareness: " + Native.GetAwareness());
+            if (uiTest) Say("DPI awareness: " + Native.GetAwareness());
             string langCode = "zh-CN";
             try
             {
@@ -87,14 +114,14 @@ internal static class Program
             {
                 using (var f = new MainForm(Root, tag))
                 {
-                    Console.WriteLine("UI 自检通过");
-                    Console.WriteLine("  控件数: " + f.Controls.Count);
-                    Console.WriteLine("  标题: " + f.Text);
-                    Console.WriteLine("  DPI 缩放: " + f.DpiScale);
+                    Say("UI 自检通过");
+                    Say("  控件数: " + f.Controls.Count);
+                    Say("  标题: " + f.Text);
+                    Say("  DPI 缩放: " + f.DpiScale);
                     var scr = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
-                    Console.WriteLine("  屏幕(逻辑): " + scr.Width + "x" + scr.Height);
+                    Say("  屏幕(逻辑): " + scr.Width + "x" + scr.Height);
                     using (var g2 = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
-                        Console.WriteLine("  桌面 DC DPI: " + g2.DpiX);
+                        Say("  桌面 DC DPI: " + g2.DpiX);
                 }
                 return 0;
             }
@@ -110,7 +137,7 @@ internal static class Program
                     f3.CapturePng(shotPath);
                     f3.Hide();
                 }
-                Console.WriteLine("saved: " + shotPath);
+                Say("saved: " + shotPath);
                 return 0;
             }
 
@@ -118,7 +145,7 @@ internal static class Program
             {
                 using (var f2 = new MainForm(Root, tag))
                 {
-                    Console.WriteLine(f2.BuildDiagnosisText());
+                    Say(f2.BuildDiagnosisText());
                 }
                 return 0;
             }
@@ -127,7 +154,7 @@ internal static class Program
             {
                 using (var f = new MainForm(Root, tag))
                 {
-                    Console.WriteLine(f.RunCrashFlowTest());
+                    Say(f.RunCrashFlowTest());
                 }
                 return 0;
             }
@@ -143,14 +170,14 @@ internal static class Program
 
     private static int UpdateTest()
     {
-        Console.WriteLine("当前版本: " + MainForm.AppVersion);
+        Say("当前版本: " + MainForm.AppVersion);
         var r = Updater.Check(MainForm.AppVersion);
-        if (!r.Ok) { Console.WriteLine("检查失败: " + r.Error); return 1; }
-        Console.WriteLine("最新版本: " + r.LatestTag + "   " + r.ReleaseName);
-        Console.WriteLine("发布时间: " + r.PublishedAt);
-        Console.WriteLine("下载页:   " + r.HtmlUrl);
-        Console.WriteLine("有新版本: " + r.IsNewer);
-        Console.WriteLine("版本比较测试: 6.02 vs 6.0 = " + Updater.CompareVersions("v6.02", "v6.0") +
+        if (!r.Ok) { Say("检查失败: " + r.Error); return 1; }
+        Say("最新版本: " + r.LatestTag + "   " + r.ReleaseName);
+        Say("发布时间: " + r.PublishedAt);
+        Say("下载页:   " + r.HtmlUrl);
+        Say("有新版本: " + r.IsNewer);
+        Say("版本比较测试: 6.02 vs 6.0 = " + Updater.CompareVersions("v6.02", "v6.0") +
                           " ; 5.97 vs 6.0 = " + Updater.CompareVersions("v5.97", "v6.0") +
                           " ; 6.10 vs 6.9 = " + Updater.CompareVersions("v6.10", "v6.9"));
         return 0;
@@ -159,12 +186,12 @@ internal static class Program
     private static int CodeTest()
     {
         ErrorCodes.Load(Root, I18n.Code);
-        Console.WriteLine("错误码表: " + ErrorCodes.Count + " 条");
+        Say("错误码表: " + ErrorCodes.Count + " 条");
         string sample = "Faulting module dxgi.dll, code 0x887A0006 (DXGI_ERROR_DEVICE_HUNG) at nvlddmkm.sys";
-        Console.WriteLine("样本: " + sample);
-        Console.WriteLine(ErrorCodes.Explain(sample));
-        Console.WriteLine("--- 再试一个 ---");
-        Console.WriteLine(ErrorCodes.Explain("WHEA_UNCORRECTABLE_ERROR  0x00000124  bugcheck"));
+        Say("样本: " + sample);
+        Say(ErrorCodes.Explain(sample));
+        Say("--- 再试一个 ---");
+        Say(ErrorCodes.Explain("WHEA_UNCORRECTABLE_ERROR  0x00000124  bugcheck"));
         return 0;
     }
 
@@ -173,11 +200,11 @@ internal static class Program
         var hit = GameDetect.Find();
         if (hit == null)
         {
-            Console.WriteLine("未检测到游戏（符合预期：当前前台只有浏览器/终端）");
+            Say("未检测到游戏（符合预期：当前前台只有浏览器/终端）");
         }
         else
         {
-            Console.WriteLine(string.Format("检测到: {0} (PID {1}, {2:N0} MB) {3}",
+            Say(string.Format("检测到: {0} (PID {1}, {2:N0} MB) {3}",
                 hit.Name, hit.Pid, hit.Memory / 1048576.0, hit.Path));
         }
         return 0;
@@ -186,8 +213,8 @@ internal static class Program
     private static int ReportTest()
     {
         ErrorCodes.Load(Root, I18n.Code);
-        Console.WriteLine("错误码表: " + ErrorCodes.Count + " 条");
-        Console.WriteLine("查找测试: " + ErrorCodes.Find("code 0x887A0006").Count + " 条命中");
+        Say("错误码表: " + ErrorCodes.Count + " 条");
+        Say("查找测试: " + ErrorCodes.Find("code 0x887A0006").Count + " 条命中");
         var input = new CrashReport.ReportInput();
         input.IsCrash = true;
         input.Reason = "应用错误事件 1000";
@@ -208,8 +235,8 @@ internal static class Program
                 70 + rnd.Next(0, 20), 30 + rnd.Next(0, 40)));
         }
         string path = CrashReport.Write(Root, input);
-        Console.WriteLine("报告已生成: " + path);
-        foreach (string line in File.ReadAllLines(path)) Console.WriteLine("  " + line);
+        Say("报告已生成: " + path);
+        foreach (string line in File.ReadAllLines(path)) Say("  " + line);
         return 0;
     }
 
@@ -227,7 +254,7 @@ internal static class Program
     private static int Headless(bool selfTest, int collectSeconds)
     {
         bool nv = Nvml.Init();
-        Console.WriteLine("NVML: " + (nv ? "OK  " + Nvml.DeviceName : "unavailable - " + Nvml.LastError));
+        Say("NVML: " + (nv ? "OK  " + Nvml.DeviceName : "unavailable - " + Nvml.LastError));
         var cpu = new CpuSampler();
         cpu.Prime();
         Thread.Sleep(600);
@@ -243,12 +270,12 @@ internal static class Program
             int mhz, load, active, total; double ram;
             cpu.Read(out mhz, out load, out active, out total, out ram);
             Nvml.Read(out t, out p, out cs, out cm, out ug, out um, out mu, out mt, out ps, out th);
-            Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            Say(string.Format(System.Globalization.CultureInfo.InvariantCulture,
                 "GPU  {0}: {1:N1}C  {2:N1}W  {3}/{4}MHz  占用{5}%  显存{6:N0}/{7:N0}MB  {8}",
                 Nvml.DeviceName, t, p, cs, cm, ug, mu, mt, ps));
-            Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            Say(string.Format(System.Globalization.CultureInfo.InvariantCulture,
                 "CPU  {0}MHz  占用{1}%  活跃{2}/{3}  内存{4}%", mhz, load, active, total, ram));
-            Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            Say(string.Format(System.Globalization.CultureInfo.InvariantCulture,
                 "单次采样耗时: {0:N2} ms（nvidia-smi 版本约 106 ms）", ms));
             cpu.Dispose(); Nvml.Shutdown();
             return 0;
@@ -275,7 +302,7 @@ internal static class Program
             count++;
             Thread.Sleep(500);
         }
-        Console.WriteLine("写入 " + count + " 行 → " + file);
+        Say("写入 " + count + " 行 → " + file);
         cpu.Dispose(); Nvml.Shutdown();
         return 0;
     }

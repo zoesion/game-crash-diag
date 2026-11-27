@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = 'D:\AI_Work\game-crash-diag'
 $src = Join-Path $root 'src'
 $outDir = 'D:\Program Files\GameCrashDiag6'
@@ -9,7 +9,7 @@ if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDi
 $files = (Get-ChildItem $src -Filter '*.cs' | ForEach-Object { '"' + $_.FullName + '"' }) -join ' '
 $argLine = @(
     '/nologo',
-    '/target:exe',
+    '/target:winexe',
     '/platform:x64',
     '/optimize+',
     '/out:GameCrashDiag6.exe',
