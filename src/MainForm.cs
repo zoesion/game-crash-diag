@@ -60,6 +60,7 @@ public sealed class MainForm : Form
     private PictureBox _chart, _cpuChart;
     private Panel _barTrack, _barThumb;
     private NotifyIcon _tray;
+    private ContextMenuStrip _trayMenu;
     private ContextMenuStrip _menu;
     private Bitmap _bmpFront, _bmpBack, _bmpCpuFront, _bmpCpuBack;
     private int _hoverGpu = -1, _hoverCpu = -1;
@@ -339,10 +340,15 @@ public sealed class MainForm : Form
         _tray.Text = Text;
         _tray.Visible = true;
         _tray.DoubleClick += (s, e) => ShowFromTray();
+        _tray.MouseClick += (s, e) =>
+        {
+            if (e.Button == MouseButtons.Left) ShowFromTray();   // 右键菜单由 ContextMenuStrip 自动处理
+        };
         var trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add(I18n.T("TrayShow", "显示")).Click += (s, e) => ShowFromTray();
         trayMenu.Items.Add(I18n.T("TrayExit", "退出")).Click += (s, e) => { _exitFlag = true; Close(); };
-        _tray.ContextMenuStrip = trayMenu;
+        trayMenu.ShowImageMargin = false;
+        _trayMenu = trayMenu;
 
         _timer = new Timer();
         _timer.Interval = 500;
@@ -1355,6 +1361,41 @@ public sealed class MainForm : Form
         dlg.ShowDialog(this);
     }
 
+    /// <summary>Hide to tray, then restore, reporting whether the window really came back.</summary>
+    public string RunTrayTest(string shotPath)
+    {
+        var sb = new System.Text.StringBuilder();
+        HideToTray();
+        Application.DoEvents();
+        System.Threading.Thread.Sleep(600);
+        sb.AppendLine("隐藏后 Visible=" + Visible);
+
+        ShowFromTray();
+        Application.DoEvents();
+        System.Threading.Thread.Sleep(900);
+
+        sb.AppendLine("显示后 Visible=" + Visible + "  WindowState=" + WindowState);
+        var fg = GetForegroundWindow();
+        sb.AppendLine("前台窗口 == 本窗口: " + (fg == Handle) + "  (前台=" + fg + ", 本窗口=" + Handle + ")");
+        if (!string.IsNullOrEmpty(shotPath))
+        {
+            try
+            {
+                using (var bmp = new Bitmap(Width, Height))
+                {
+                    DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
+                    bmp.Save(shotPath, System.Drawing.Imaging.ImageFormat.Png);
+                }
+                sb.AppendLine("截图: " + shotPath);
+            }
+            catch (Exception ex) { sb.AppendLine("截图失败: " + ex.Message); }
+        }
+        return sb.ToString();
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
     /// <summary>Injects the three marker kinds and renders, so the separators can be verified.</summary>
     public string RunMarkerTest(string shotPath = "")
     {
@@ -1574,12 +1615,43 @@ public sealed class MainForm : Form
         try { _tray.ShowBalloonTip(1200); } catch { }
     }
 
+    private void ShowTrayMenu()
+    {
+        try
+        {
+            if (_trayMenu != null) _trayMenu.Show(Cursor.Position);
+        }
+        catch { }
+    }
+
     private void ShowFromTray()
     {
-        Show();
-        WindowState = FormWindowState.Normal;
-        Activate();
+        try
+        {
+            ShowInTaskbar = true;
+            if (!Visible) Show();
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            ShowWindow(Handle, SW_RESTORE);
+
+            // 从后台进程抢前台需要一点技巧：短暂置顶再恢复，配合 SetForegroundWindow
+            bool wasTop = TopMost;
+            TopMost = true;
+            TopMost = wasTop;
+            Activate();
+            SetForegroundWindow(Handle);
+            BringToFront();
+            LogLine("show from tray");
+        }
+        catch (Exception ex) { LogLine("show from tray failed: " + ex.Message); }
     }
+
+    private const int SW_RESTORE = 9;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     private void OnClosing(object sender, FormClosingEventArgs e)
     {

@@ -16,7 +16,7 @@ public sealed class SessionStats
     public double VramMax;
     public double CpuUtilSum, CpuUtilMax;
     public double CpuFreqSum, CpuFreqMin = double.MaxValue, CpuFreqMax;
-    public int TempWallSamples, PowerWallSamples, HotCpuSamples, HotGpuSamples, VramTightSamples;
+    public int TempWallSamples, PowerWallSamples, HotCpuSamples, HotCpu90Samples, HotGpuSamples, VramTightSamples;
     public int ActiveCoresMax;
 
     public void Reset()
@@ -25,7 +25,7 @@ public sealed class SessionStats
         GpuTempSum = CpuTempSum = PowerSum = ClockSum = UtilSum = CpuUtilSum = CpuFreqSum = 0;
         GpuTempMax = CpuTempMax = PowerMax = ClockMax = UtilMax = VramMax = CpuUtilMax = CpuFreqMax = 0;
         CpuTempMin = double.MaxValue; ClockMin = double.MaxValue; CpuFreqMin = double.MaxValue;
-        TempWallSamples = PowerWallSamples = HotCpuSamples = HotGpuSamples = VramTightSamples = 0;
+        TempWallSamples = PowerWallSamples = HotCpuSamples = HotCpu90Samples = HotGpuSamples = VramTightSamples = 0;
         ActiveCoresMax = 0;
     }
 
@@ -55,6 +55,7 @@ public sealed class SessionStats
             if (cpuTemp > CpuTempMax) CpuTempMax = cpuTemp;
             if (cpuTemp < CpuTempMin) CpuTempMin = cpuTemp;
             if (cpuTemp >= 95) HotCpuSamples++;
+            if (cpuTemp >= 90) HotCpu90Samples++;
         }
         if (cpuUtil >= 0) { CpuUtilSum += cpuUtil; if (cpuUtil > CpuUtilMax) CpuUtilMax = cpuUtil; }
         if (cpuFreq > 0)
@@ -85,9 +86,12 @@ public sealed class SessionStats
         if (Samples == 0) { list.Add("本次会话没有采到数据（可能游戏一闪而过）"); return list; }
 
         double pctHotCpu = HotCpuSamples * 100.0 / Samples;
+        double pctHotCpu90 = HotCpu90Samples * 100.0 / Samples;
         double pctHotGpu = HotGpuSamples * 100.0 / Samples;
         double pctTempWall = TempWallSamples * 100.0 / Samples;
 
+        if (pctHotCpu90 >= 40 && pctHotCpu < 30)
+            list.Add(string.Format("CPU 有 {0:0}% 的时间在 90°C 以上（最高 {1:0}°C），属于偏高，但还没到降频区", pctHotCpu90, CpuTempMax));
         if (pctHotCpu >= 30)
             list.Add(string.Format("CPU 有 {0:0}% 的时间在 95°C 以上（最高 {1:0}°C），长时间高温会触发降频", pctHotCpu, CpuTempMax));
         else if (CpuTempMax >= 95)
