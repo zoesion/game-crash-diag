@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -29,6 +29,7 @@ internal static class Program
         bool crashTest = false;
         bool startHidden = false;
         bool diagTest = false;
+        string shotPath = "";
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "-SelfTest") selfTest = true;
@@ -38,6 +39,7 @@ internal static class Program
             else if (args[i] == "-TestCrashFlow") crashTest = true;
             else if (args[i] == "-Tray") startHidden = true;
             else if (args[i] == "-TestDiagnosis") diagTest = true;
+            else if (args[i] == "-Shot" && i + 1 < args.Length) shotPath = args[++i];
             else if (args[i] == "-Collect" && i + 1 < args.Length) int.TryParse(args[++i], out collectSeconds);
         }
 
@@ -79,6 +81,21 @@ internal static class Program
                     using (var g2 = System.Drawing.Graphics.FromHwnd(IntPtr.Zero))
                         Console.WriteLine("  桌面 DC DPI: " + g2.DpiX);
                 }
+                return 0;
+            }
+
+            if (!string.IsNullOrEmpty(shotPath))
+            {
+                using (var f3 = new MainForm(Root, tag))
+                {
+                    f3.Show();
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(1200);
+                    Application.DoEvents();
+                    f3.CapturePng(shotPath);
+                    f3.Hide();
+                }
+                Console.WriteLine("saved: " + shotPath);
                 return 0;
             }
 

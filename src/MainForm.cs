@@ -49,7 +49,7 @@ public sealed class MainForm : Form
     private bool _lhmReady;
 
     // controls
-    private Label _lblGpuName, _lblStatus, _lblDetail, _lblStats, _lblHint, _lblVer, _lblCpuName;
+    private Label _lblGpuName, _lblStatus, _lblDetail, _lblStats, _lblHint, _lblVer, _lblCpuName, _lblTitle;
     private Label _tip;
     private Label[] _unitLabels;
     private Label _valTemp, _valPower, _valClock, _valUtil;
@@ -60,6 +60,8 @@ public sealed class MainForm : Form
     private ContextMenuStrip _menu;
     private Bitmap _bmpFront, _bmpBack, _bmpCpuFront, _bmpCpuBack;
     private int _hoverGpu = -1, _hoverCpu = -1;
+    private int _lastHoverGpu = -1, _lastHoverCpu = -1;
+    private DateTime _lastHoverDraw = DateTime.MinValue;
     private bool _exitFlag;
 
     // game mode
@@ -71,6 +73,7 @@ public sealed class MainForm : Form
     private int _lastClock;
     private int _lastUtil;
     private int _sessionCount;
+    private double _ramGb;
 
     public MainForm(string root, string tag, bool startHidden = false)
     {
@@ -93,6 +96,7 @@ public sealed class MainForm : Form
         MaximizeBox = false;
         DoubleBuffered = true;
         Font = new Font("Microsoft YaHei UI", 9f);
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         BuildUi();
         LoadRules();
@@ -134,13 +138,14 @@ public sealed class MainForm : Form
         btnMenu.Bounds = new Rectangle(S(6), S(8), S(38), S(34));
         Controls.Add(btnMenu);
 
-        _lblGpuName = MakeLabel("GPU", new Point(S(52), S(6)), 11f, CDim, true);
-        _lblStatus = MakeLabel("● --", new Point(S(620), S(10)), 9f, CAccent, false);
+        _lblTitle = MakeLabel(I18n.T("AppTitle", "游戏崩溃诊断器"), new Point(S(52), S(2)), 17f, CText, true);
+        _lblGpuName = MakeLabel("GPU", new Point(S(8), S(38)), 9.5f, CDim, false);
+        _lblStatus = MakeLabel("● --", new Point(S(620), S(12)), 9f, CAccent, false);
         _lblStatus.AutoSize = false;
         _lblStatus.Size = new Size(S(134), S(22));
         _lblStatus.TextAlign = ContentAlignment.MiddleRight;
 
-        _lblCpuName = MakeLabel("CPU", new Point(S(6), S(250)), 10f, CDim, true);
+        _lblCpuName = MakeLabel("CPU", new Point(S(8), S(250)), 10f, CDim, false);
 
         // GPU cards
         var cardTemp = MakeCard(S(6), S(66));
@@ -355,9 +360,10 @@ public sealed class MainForm : Form
         _valCpuTemp.ForeColor = s.CpuTemp >= 95 ? CBad : (s.CpuTemp >= 85 ? CWarn : CAccent);
         _valCpuUtil.ForeColor = s.CpuLoad >= 90 ? CBad : (s.CpuLoad >= 70 ? CWarn : CAccent);
 
+        if (_ramGb <= 0) _ramGb = TotalRamGb();
         _lblDetail.Text = string.Format("显存 {0:N0} / {1} MB     系统内存 {2}%  {3}G/{4}G      GPU降频 {5}      性能档 {6}",
             s.MemUsedMb, s.MemTotalMb > 0 ? s.MemTotalMb.ToString("N0") : "--", (int)s.RamPct,
-            Math.Round(s.RamPct / 100.0 * TotalRamGb(), 1), TotalRamGb(),
+            Math.Round(s.RamPct / 100.0 * _ramGb, 1), _ramGb,
             ThrottleText(s.Throttle), PStateText(s.PState));
 
         _lblStats.Text = string.Format("{0} {1:N0}{2}    {3} 0    {4} {5}",
@@ -836,7 +842,15 @@ public sealed class MainForm : Form
         _tip.Visible = true;
         _tip.BringToFront();
 
-        Draw();
+        // 只在悬停位置真的变了、且距上次重画超过 50ms 时才重画，避免鼠标一动就卡
+        bool moved = (isGpu ? _lastHoverGpu : _lastHoverCpu) != idx;
+        _lastHoverGpu = isGpu ? idx : _lastHoverGpu;
+        _lastHoverCpu = isGpu ? _lastHoverCpu : idx;
+        if (moved && (DateTime.Now - _lastHoverDraw).TotalMilliseconds >= 50)
+        {
+            _lastHoverDraw = DateTime.Now;
+            Draw();
+        }
     }
 
     // ── helpers ─────────────────────────────────────────────────
@@ -879,6 +893,22 @@ public sealed class MainForm : Form
         dlg.ShowDialog(this);
     }
 
+    /// <summary>Renders the whole window to a PNG (used by -Shot for verification).</summary>
+    public void CapturePng(string path)
+    {
+        try
+        {
+            CreateControl();
+            foreach (Control c in Controls) c.CreateControl();
+            using (var bmp = new Bitmap(Width, Height))
+            {
+                DrawToBitmap(bmp, new Rectangle(0, 0, Width, Height));
+                bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+        catch { }
+    }
+
     public string BuildDiagnosisText()
     {
         _cpu.Prime();
@@ -889,7 +919,7 @@ public sealed class MainForm : Form
         d.CpuName = CpuName();
         d.Cores = PhysicalCores();
         d.Threads = Environment.ProcessorCount;
-        d.RamGb = TotalRamGb();
+        d.RamGb = _ramGb > 0 ? _ramGb : TotalRamGb();
         d.OsName = OsName();
         d.Version = "v6.0 (C#)";
         d.Now = TakeSample();

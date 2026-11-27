@@ -13,6 +13,7 @@ $argLine = @(
     '/platform:x64',
     '/optimize+',
     '/out:GameCrashDiag6.exe',
+    '/win32icon:D:\AI_Work\game-crash-diag\app.ico',
     '/win32manifest:"D:\AI_Work\game-crash-diag\src\app.manifest"',
     '/reference:System.dll',
     '/reference:System.Core.dll',
