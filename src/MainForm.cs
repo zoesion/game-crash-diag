@@ -693,9 +693,9 @@ public sealed class MainForm : Form
                 {
                     SaveLastSession(closed.Name, (exitTime - _gameStart).TotalMinutes,
                         _stats.CpuTempMax, _stats.GpuTempMax, _stats.VramMax, report);
-                    ShowReportBanner(string.Format("✓ 对局结束 · {0} · {1} 分钟 · CPU 最高 {2:0}°C · GPU 最高 {3:0}°C · 显存峰值 {4:N0} MB · 报告 {5}（点此打开）",
+                    ShowReportBanner(string.Format("✓ 对局结束 · {0} · {1} 分钟 · 报告 {2}（点此打开）",
                         closed.Name, Math.Round((exitTime - _gameStart).TotalMinutes),
-                        _stats.CpuTempMax, _stats.GpuTempMax, _stats.VramMax, Path.GetFileName(report)), report);
+                        Path.GetFileName(report)), report);
                     LogLine("session banner shown: " + Path.GetFileName(report));
                 }
                 catch { }
@@ -1751,8 +1751,8 @@ public sealed class MainForm : Form
             if (!File.Exists(report)) return;
             DateTime tt;
             string clock = DateTime.TryParse(when, out tt) ? tt.ToString("MM-dd HH:mm") : when;
-            ShowReportBanner(string.Format("上一次对局 · {0} · {1} · {2} 分钟 · CPU {3}°C · GPU {4}°C · 报告 {5}（点此打开）",
-                clock, game, p[2], p[3], p[4], Path.GetFileName(report)), report);
+            ShowReportBanner(string.Format("上一次对局 · {0} · {1} · {2} 分钟 · 报告 {3}（点此打开）",
+                clock, game, p[2], Path.GetFileName(report)), report);
         }
         catch { }
     }
