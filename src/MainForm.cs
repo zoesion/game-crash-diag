@@ -66,6 +66,8 @@ public sealed class MainForm : Form
     private PictureBox _chart, _cpuChart;
     private Panel _barTrack, _barThumb;
     private NotifyIcon _tray;
+    private TrayTipForm _trayTip;
+    private double _lastGpuTemp, _lastGpuPower;
     private ContextMenuStrip _trayMenu;
     private ContextMenuStrip _menu;
     private Bitmap _bmpFront, _bmpBack, _bmpCpuFront, _bmpCpuBack;
@@ -348,6 +350,7 @@ public sealed class MainForm : Form
         LogLine("tray initialised, icon=" + (_tray.Icon != null ? _tray.Icon.Width + "x" + _tray.Icon.Height : "null"));
         _tray.Text = Text;
         _tray.Visible = true;
+        _tray.MouseMove += (s, e) => ShowTrayTip();
         _tray.DoubleClick += (s, e) => ShowFromTray();
         _tray.MouseClick += (s, e) =>
         {
@@ -1947,6 +1950,45 @@ public sealed class MainForm : Form
             Process.Start("notepad.exe", "\"" + files[0].FullName + "\"");
         }
         catch (Exception ex) { MessageBox.Show("打开失败: " + ex.Message, Text); }
+    }
+
+    /// <summary>Renders the tray hover popup with sample values (test hook).</summary>
+    public string RunTrayTipTest(string shotPath)
+    {
+        var sb = new System.Text.StringBuilder();
+        _lastGpuTemp = 78; _lastGpuPower = 140; _lastCpuTemp = 92; _lastCpuFreq = 3200;
+        if (_trayTip == null) _trayTip = new TrayTipForm();
+        _trayTip.SetValues(_lastGpuTemp, _lastGpuPower, _lastCpuTemp, _lastCpuFreq);
+        _trayTip.ShowAt(new Point(1200, 900));
+        Application.DoEvents();
+        System.Threading.Thread.Sleep(400);
+        sb.AppendLine("悬浮窗可见: " + _trayTip.Visible + "  位置: " + _trayTip.Location + "  尺寸: " + _trayTip.Size);
+        if (!string.IsNullOrEmpty(shotPath))
+        {
+            try
+            {
+                using (var bmp = new Bitmap(_trayTip.Width, _trayTip.Height))
+                {
+                    _trayTip.DrawToBitmap(bmp, new Rectangle(0, 0, _trayTip.Width, _trayTip.Height));
+                    bmp.Save(shotPath, System.Drawing.Imaging.ImageFormat.Png);
+                }
+                sb.AppendLine("截图: " + shotPath);
+            }
+            catch (Exception ex) { sb.AppendLine("截图失败: " + ex.Message); }
+        }
+        _trayTip.Hide();
+        return sb.ToString();
+    }
+
+    private void ShowTrayTip()
+    {
+        try
+        {
+            if (_trayTip == null) _trayTip = new TrayTipForm();
+            _trayTip.SetValues(_lastGpuTemp, _lastGpuPower, _lastCpuTemp, _lastCpuFreq);
+            _trayTip.ShowAt(Cursor.Position);
+        }
+        catch (Exception ex) { LogLine("tray tip failed: " + ex.Message); }
     }
 
     private void ShowTrayMenu()

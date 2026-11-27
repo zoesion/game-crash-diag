@@ -71,6 +71,7 @@ internal static class Program
         bool trayTest = false;
         bool bannerTest = false;
         bool powerTest = false;
+        bool trayTipTest = false;
         bool elevatedRestart = false;
         bool shutdownTest = false;
         string shotPath = "";
@@ -90,6 +91,7 @@ internal static class Program
             else if (args[i] == "-TestTray") trayTest = true;
             else if (args[i] == "-TestBanner") bannerTest = true;
             else if (args[i] == "-TestPower") powerTest = true;
+            else if (args[i] == "-TestTrayTip") trayTipTest = true;
             else if (args[i] == "-Elevated") elevatedRestart = true;
             else if (args[i] == "-TestShutdown") shutdownTest = true;
             else if (args[i] == "-Shot" && i + 1 < args.Length) shotPath = args[++i];
@@ -174,6 +176,15 @@ internal static class Program
                 Say("测试：一个普通时刻（23:50）应该判为否");
                 Say("  23:50 -> " + CrashReport.DetectUncleanShutdown(new DateTime(2026, 11, 27, 23, 50, 0)));
                 Say("  23:37 -> " + CrashReport.DetectUncleanShutdown(new DateTime(2026, 11, 27, 23, 37, 9)));
+                return 0;
+            }
+
+            if (trayTipTest)
+            {
+                using (var f8 = new MainForm(Root, tag))
+                {
+                    Say(f8.RunTrayTipTest(shotPath));
+                }
                 return 0;
             }
 
