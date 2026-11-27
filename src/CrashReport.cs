@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
@@ -160,6 +160,7 @@ public static class CrashReport
         public List<string> TailRows = new List<string>();
         public string EventText = "";
         public double IdleGpuTemp, IdleCpuTemp, GameGpuAvg, GameGpuMax, GameCpuAvg;
+        public SessionStats Stats;
     }
 
     public static string Write(string root, ReportInput input)
@@ -182,12 +183,16 @@ public static class CrashReport
         sb.AppendLine("  记录条数 : " + input.TailRows.Count);
         sb.AppendLine("  遥测文件 : " + input.TelemetryFile);
         sb.AppendLine();
+        if (input.IsCrash)
+        {
         sb.AppendLine("  --- 最后 40 条遥测 ---");
         int from = Math.Max(0, input.TailRows.Count - 40);
         for (int i = from; i < input.TailRows.Count; i++) sb.AppendLine("  " + input.TailRows[i]);
         sb.AppendLine();
 
         // simple signal summary so the report is readable on its own
+        }
+
         sb.AppendLine("  --- 数据摘要 ---");
         sb.AppendLine(Summary(input.TailRows));
         sb.AppendLine();
@@ -208,11 +213,32 @@ public static class CrashReport
             sb.AppendLine();
         }
 
+        // 会话统计 + 注意事项：正常对局也有
+        if (input.Stats != null)
+        {
+            TimeSpan dur = input.ExitTime - input.StartTime;
+            sb.AppendLine("  --- 会话统计 ---");
+            sb.AppendLine("  " + input.Stats.How() + "，时长 " + Math.Round(dur.TotalMinutes, 1) + " 分钟");
+            sb.Append(input.Stats.Summary());
+            sb.AppendLine();
+
+            sb.AppendLine("  --- 注意事项 ---");
+            foreach (string o in input.Stats.Observations(dur)) sb.AppendLine("  · " + o);
+            sb.AppendLine();
+        }
+
         sb.AppendLine("  --- 错误码解读 ---");
         sb.Append(ErrorCodes.Explain(evidence));
         sb.AppendLine();
 
         sb.AppendLine("  --- 建议 ---");
+        if (!input.IsCrash && input.Stats != null)
+        {
+            var extra = input.Stats.Advice();
+            if (extra.Count == 0) sb.AppendLine("  1. 本次没有发现异常，保持现在的设置即可");
+            else { int n = 1; foreach (string a in extra) sb.AppendLine("  " + (n++) + ". " + a); }
+            sb.AppendLine();
+        }
         if (input.IsCrash)
         {
             sb.AppendLine("  1. 先看显卡驱动版本，回滚或升级到官方 WHQL 版本");

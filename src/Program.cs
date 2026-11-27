@@ -53,6 +53,7 @@ internal static class Program
         bool uiTest = false;
         bool testDetect = false;
         bool testReport = false;
+        bool testSession = false;
         bool crashTest = false;
         bool startHidden = false;
         bool diagTest = false;
@@ -66,6 +67,7 @@ internal static class Program
             else if (args[i] == "-UiTest") uiTest = true;
             else if (args[i] == "-TestDetect") testDetect = true;
             else if (args[i] == "-TestReport") testReport = true;
+            else if (args[i] == "-TestSession") testSession = true;
             else if (args[i] == "-TestCrashFlow") crashTest = true;
             else if (args[i] == "-Tray") startHidden = true;
             else if (args[i] == "-TestDiagnosis") diagTest = true;
@@ -81,6 +83,7 @@ internal static class Program
         if (updateTest) return UpdateTest();
         if (testDetect) return DetectTest();
         if (testReport) return ReportTest();
+        if (testSession) return SessionTest();
 
         // instance identity: a dev copy carries an instance.txt next to the exe
         string tag = "";
@@ -221,14 +224,18 @@ internal static class Program
         return 0;
     }
 
-    private static int ReportTest()
+    private static int ReportTest() { return ReportTest(false); }
+
+    private static int SessionTest() { return ReportTest(true); }
+
+    private static int ReportTest(bool normalSession)
     {
         ErrorCodes.Load(Root, I18n.Code);
         Say("错误码表: " + ErrorCodes.Count + " 条");
         Say("查找测试: " + ErrorCodes.Find("code 0x887A0006").Count + " 条命中");
         var input = new CrashReport.ReportInput();
-        input.IsCrash = true;
-        input.Reason = "应用错误事件 1000";
+        input.IsCrash = !normalSession;
+        input.Reason = normalSession ? "正常退出" : "应用错误事件 1000";
         input.GameName = "bf6";
         input.Category = "bf6";
         input.StartTime = DateTime.Now.AddMinutes(-12);
@@ -237,6 +244,14 @@ internal static class Program
         input.IdleGpuTemp = 30.2; input.IdleCpuTemp = 45.0;
         input.GameGpuAvg = 68.4; input.GameGpuMax = 74.0; input.GameCpuAvg = 82.0;
         input.EventText = "Faulting module dxgi.dll, exception code 0x887A0006";
+        var st = new SessionStats();
+        var rndStats = new Random(7);
+        for (int i = 0; i < 1200; i++)
+            st.Add(55 + rndStats.Next(0, 12), 140 + rndStats.Next(0, 50), 1650 + rndStats.Next(0, 200),
+                   92 + rndStats.Next(0, 8), 11800 + rndStats.Next(0, 900),
+                   84 + rndStats.Next(0, 13), 55 + rndStats.Next(0, 25), 3400 + rndStats.Next(0, 400),
+                   18 + rndStats.Next(0, 3), (ulong)(i % 7 == 0 ? 4UL : 0UL));
+        input.Stats = st;
         var rnd = new Random(7);
         for (int i = 0; i < 50; i++)
         {

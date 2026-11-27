@@ -82,6 +82,7 @@ public sealed class MainForm : Form
     private int _sessionCount;
     private double _ramGb;
     // 温度基线：不打游戏时累积，游戏内对比
+    private readonly SessionStats _stats = new SessionStats();
     private double _idleGpuSum, _idleCpuSum;
     private int _idleCount;
     private double _gameGpuSum, _gameCpuSum, _gameGpuMax;
@@ -272,7 +273,7 @@ public sealed class MainForm : Form
         _miStart.Click += (s, e) => ToggleLogging();
         var miLog = _menu.Items.Add(I18n.T("MenuLogs", "打开数据目录"));
         miLog.Click += (s, e) => OpenPath(_store.LogDir);
-        var miRep = _menu.Items.Add(I18n.T("MenuReports", "打开崩溃报告"));
+        var miRep = _menu.Items.Add(I18n.T("MenuReports", "打开报告目录（崩溃 / 对局）"));
         miRep.Click += (s, e) => OpenPath(Path.Combine(_root, "reports"));
         var miDiag = _menu.Items.Add(I18n.T("MenuDiag", "诊断报告"));
         miDiag.Click += (s, e) => ShowDiagnosis();
@@ -485,6 +486,8 @@ public sealed class MainForm : Form
         {
             if (s.GpuTemp > 0) { _gameGpuSum += s.GpuTemp; if (s.GpuTemp > _gameGpuMax) _gameGpuMax = s.GpuTemp; _gameCount++; }
             if (s.CpuTemp > 0) _gameCpuSum += s.CpuTemp;
+            _stats.Add(s.GpuTemp, s.GpuPower, s.ClockSm, s.UtilGpu, s.MemUsedMb,
+                       s.CpuTemp, s.CpuLoad, s.CpuMhz, s.ActiveCores, s.Throttle);
         }
 
         _lastClock = s.ClockSm;
@@ -606,6 +609,7 @@ public sealed class MainForm : Form
             _game = hit;
             _gameStart = hit.StartTime > DateTime.Now.AddDays(-1) ? hit.StartTime : DateTime.Now;
             _gameGpuSum = 0; _gameCpuSum = 0; _gameGpuMax = 0; _gameCount = 0;
+            _stats.Reset();
             _tail.Clear();
             _store.StartLog(SafeName(hit.Name), 500);
             _lblHint.Text = string.Format(I18n.T("HintGame", "已检测到游戏 {0}，正在记录到 logs\\{1}\\"),
@@ -636,7 +640,8 @@ public sealed class MainForm : Form
                 IdleCpuTemp = _idleCount > 0 ? _idleCpuSum / _idleCount : 0,
                 GameGpuAvg = _gameCount > 0 ? _gameGpuSum / _gameCount : 0,
                 GameGpuMax = _gameGpuMax,
-                GameCpuAvg = _gameCount > 0 ? _gameCpuSum / _gameCount : 0
+                GameCpuAvg = _gameCount > 0 ? _gameCpuSum / _gameCount : 0,
+                Stats = _stats
             };
             string report = CrashReport.Write(_root, input);
             string snap = verdict.IsCrash
@@ -664,7 +669,14 @@ public sealed class MainForm : Form
             }
             else
             {
-                _lblHint.Text = "游戏正常退出，记录已保存: " + Path.GetFileName(report) + "  已切回系统监控";
+                string tip = "";
+                try
+                {
+                    var obs = _stats.Observations(exitTime - _gameStart);
+                    if (obs.Count > 0) tip = "  注意：" + obs[0];
+                }
+                catch { }
+                _lblHint.Text = "游戏正常退出，报告已生成: " + Path.GetFileName(report) + tip;
                 _lblHint.ForeColor = CDim;
             }
         }
