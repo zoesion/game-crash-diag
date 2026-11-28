@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -70,6 +70,8 @@ public sealed class MainForm : Form
     private double _lastGpuTemp, _lastGpuPower;
     private DateTime _trayDiag = DateTime.MinValue;
     private bool _tipWasVisible;
+    private int _gpuFaultSeen = -1;
+    private DateTime _gpuFaultCheck = DateTime.MinValue;
     private ContextMenuStrip _trayMenu;
     private ContextMenuStrip _menu;
     private Bitmap _bmpFront, _bmpBack, _bmpCpuFront, _bmpCpuBack;
@@ -559,6 +561,32 @@ public sealed class MainForm : Form
             _lblHint.Text = I18n.T("HintNoGame", "未检测到游戏，正在做系统监控（logs\\system\\）");
             if (_powerWarn != "") _lblHint.Text += "   ·   ⚠ " + _powerWarn;
             _lblHint.ForeColor = CDim;
+        }
+
+        if ((DateTime.Now - _gpuFaultCheck).TotalSeconds >= 60)
+        {
+            _gpuFaultCheck = DateTime.Now;
+            try
+            {
+                int count = 0;
+                var q = new System.Diagnostics.Eventing.Reader.EventLogQuery("System",
+                    System.Diagnostics.Eventing.Reader.PathType.LogName,
+                    "*[System[Provider[@Name='nvlddmkm'] and TimeCreated[@SystemTime>='" +
+                    DateTime.UtcNow.AddMinutes(-30).ToString("yyyy-MM-ddTHH:mm:ss.fffZ") + "']]]");
+                using (var r = new System.Diagnostics.Eventing.Reader.EventLogReader(q))
+                {
+                    while (r.ReadEvent() != null) count++;
+                }
+                if (_gpuFaultSeen < 0) _gpuFaultSeen = count;
+                else if (count > _gpuFaultSeen)
+                {
+                    _powerWarn = "显卡驱动报错 +" + (count - _gpuFaultSeen) + "（可能超频不稳/显存）";
+                    LogLine("gpu faults increased to " + count + " (was " + _gpuFaultSeen + ")");
+                    _gpuFaultSeen = count;
+                }
+                else _gpuFaultSeen = count;
+            }
+            catch { }
         }
 
         if ((DateTime.Now - _battCheck).TotalSeconds >= 5)
